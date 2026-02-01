@@ -1,0 +1,38 @@
+# Compiler files
+cache/
+out/
+artifacts/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Docs
+docs/
+
+# Dotenv file
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+lib/
+
+# Coverage
+lcov.info
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+*.log
