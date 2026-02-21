@@ -23,7 +23,8 @@ router.get('/twitter', async (_req: Request, res: Response) => {
 // ============ GET /api/auth/callback ============
 router.get('/callback', async (req: Request, res: Response) => {
   const { code, state } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  // FRONTEND_URL may be comma-separated for CORS; use only the first for redirects
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
 
   if (!code || !state) {
     res.redirect(`${frontendUrl}/auth/callback?error=missing_params`);
