@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.625rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 240 15% 3%;
+    --foreground: 0 0% 96%;
+    --card: 240 12% 5.5%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 12% 5.5%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 0 77% 55%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 10% 9%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 10% 9%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 240 10% 9%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 10% 12%;
+    --input: 240 10% 12%;
+    --ring: 0 77% 55%;
+    --sidebar-background: 240 15% 3%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 77% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 10% 9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 10% 12%;
+    --sidebar-ring: 0 77% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Tabular numbers for prices and data */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* Surface cards — opaque, performant */
+  .surface {
+    @apply bg-cre8-surface border border-white/[0.06] rounded-xl;
+  }
+
+  .surface-elevated {
+    @apply bg-cre8-elevated border border-white/[0.08] rounded-xl;
+  }
+
+  .surface-interactive {
+    @apply bg-cre8-surface border border-white/[0.06] rounded-xl transition-colors duration-200 hover:bg-cre8-elevated hover:border-white/[0.1];
+  }
+
+  /* Glass — only for nav and modal overlays */
+  .glass-nav {
+    @apply bg-[#07070B]/80 backdrop-blur-md border-b border-white/[0.06];
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply bg-white/[0.06] animate-pulse rounded-lg;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Consistent text colors */
+  .text-primary-white {
+    @apply text-[#F5F5F7];
+  }
+  .text-secondary-dim {
+    @apply text-[#71717A];
+  }
+  .text-muted-subtle {
+    @apply text-[#52525B];
+  }
+}
+
+/* New trade row flash animation */
+@keyframes trade-flash {
+  0% {
+    background-color: rgba(232, 65, 66, 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-trade-flash {
+  animation: trade-flash 1.5s ease-out forwards;
+}

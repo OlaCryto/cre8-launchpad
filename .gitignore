@@ -20,6 +20,9 @@ docs/
 node_modules/
 lib/
 
+# Build output
+frontend/app/dist/
+
 # Coverage
 lcov.info
 coverage/
@@ -36,3 +39,18 @@ Thumbs.db
 
 # Testing
 *.log
+
+# Foundry lock
+foundry.lock
+
+# SQLite databases
+*.db
+
+# Uploaded files
+frontend/server/uploads/
+
+# User database
+frontend/server/cre8-data.json
+
+# Windows system files
+nul
