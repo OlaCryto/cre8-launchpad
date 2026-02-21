@@ -3,12 +3,18 @@
  * Stores users and sessions in a JSON file on disk.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, 'cre8-data.json');
+const DB_PATH = process.env.DB_PATH || join(__dirname, 'cre8-data.json');
+
+// Ensure parent directory exists (for Railway volumes like /app/data/cre8-data.json)
+const dbDir = dirname(DB_PATH);
+if (!existsSync(dbDir)) {
+  mkdirSync(dbDir, { recursive: true });
+}
 
 interface User {
   id: string;
