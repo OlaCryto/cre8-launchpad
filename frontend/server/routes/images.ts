@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import { findValidSession } from '../db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const UPLOADS_DIR = join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || join(__dirname, '..', 'uploads');
 
 // Ensure uploads directory exists
 if (!existsSync(UPLOADS_DIR)) {
