@@ -7,7 +7,7 @@ import { useState, useCallback } from 'react';
 import { type Address, type Hash, parseEther, decodeEventLog } from 'viem';
 import { publicClient, createWalletClientFromKey } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
-import { LaunchpadRouterABI, CreatorRegistryABI, ERC20ABI, TokenCreatedEvent } from '@/config/abis';
+import { LaunchpadRouterABI, LaunchpadFactoryABI, CreatorRegistryABI, ERC20ABI, TokenCreatedEvent } from '@/config/abis';
 import { useAuth } from '@/contexts/AuthContext';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
@@ -97,18 +97,20 @@ export function useCreateTokenAndBuy() {
       const totalValue = CREATION_FEE + buyAvax;
 
       const hash = await wallet.walletClient.writeContract({
-        address: contracts.LaunchpadRouter as Address,
-        abi: LaunchpadRouterABI,
+        address: contracts.LaunchpadFactory as Address,
+        abi: LaunchpadFactoryABI,
         functionName: 'createTokenEasy',
         args: [
-          params.name,
-          params.symbol,
-          safeImageURI,
-          params.description,
-          params.twitter,
-          params.telegram,
-          params.website,
-          BigInt(params.creatorBuyBps),
+          {
+            name: params.name,
+            symbol: params.symbol,
+            imageURI: safeImageURI,
+            description: params.description,
+            twitter: params.twitter,
+            telegram: params.telegram,
+            website: params.website,
+            creatorBuyBps: BigInt(params.creatorBuyBps),
+          },
         ],
         value: totalValue,
         gas: 3_000_000n,

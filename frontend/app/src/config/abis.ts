@@ -35,14 +35,20 @@ export const LaunchpadRouterABI = [
     type: 'function',
     stateMutability: 'payable',
     inputs: [
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'imageURI', type: 'string' },
-      { name: 'description', type: 'string' },
-      { name: 'twitter', type: 'string' },
-      { name: 'telegram', type: 'string' },
-      { name: 'website', type: 'string' },
-      { name: 'creatorBuyBps', type: 'uint256' },
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'name', type: 'string' },
+          { name: 'symbol', type: 'string' },
+          { name: 'imageURI', type: 'string' },
+          { name: 'description', type: 'string' },
+          { name: 'twitter', type: 'string' },
+          { name: 'telegram', type: 'string' },
+          { name: 'website', type: 'string' },
+          { name: 'creatorBuyBps', type: 'uint256' },
+        ],
+      },
     ],
     outputs: [
       { name: 'token', type: 'address' },
@@ -118,6 +124,32 @@ export const LaunchpadRouterABI = [
 ] as const;
 
 export const LaunchpadFactoryABI = [
+  {
+    name: 'createTokenEasy',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'name', type: 'string' },
+          { name: 'symbol', type: 'string' },
+          { name: 'imageURI', type: 'string' },
+          { name: 'description', type: 'string' },
+          { name: 'twitter', type: 'string' },
+          { name: 'telegram', type: 'string' },
+          { name: 'website', type: 'string' },
+          { name: 'creatorBuyBps', type: 'uint256' },
+        ],
+      },
+    ],
+    outputs: [
+      { name: 'token', type: 'address' },
+      { name: 'bondingCurve', type: 'address' },
+    ],
+  },
+  TokenCreatedEvent,
   {
     name: 'getLaunchInfo',
     type: 'function',
