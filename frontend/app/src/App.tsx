@@ -4,15 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { Sidebar } from './components/Sidebar';
 import { LoadingScreen } from './components/LoadingScreen';
+import { WelcomeModal } from './components/WelcomeModal';
 import { HomePage } from './pages/HomePage';
-import { PortfolioPage } from './pages/PortfolioPage';
 import { CreateTokenPage } from './pages/CreateTokenPage';
 import { TokenDetailPage } from './pages/TokenDetailPage';
-import { PresalePage } from './pages/PresalePage';
 import { ProfilePage } from './pages/ProfilePage';
-import { VestingPage } from './pages/VestingPage';
-import { InboxPage } from './pages/InboxPage';
-import { CreatorDashboardPage } from './pages/CreatorDashboardPage';
+import { LegalPage } from './pages/LegalPage';
+import { CreatorApplyPage } from './pages/CreatorApplyPage';
+import { AdminPage } from './pages/AdminPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -42,14 +41,13 @@ function AppRoutes() {
     <DashboardLayout>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/portfolio" element={<ProfilePage />} />
         <Route path="/create" element={<CreateTokenPage />} />
         <Route path="/token/:ticker" element={<TokenDetailPage />} />
-        <Route path="/presale/:launchId" element={<PresalePage />} />
         <Route path="/profile/:address" element={<ProfilePage />} />
-        <Route path="/vesting/:launchId" element={<VestingPage />} />
-        <Route path="/inbox" element={<InboxPage />} />
-        <Route path="/dashboard" element={<CreatorDashboardPage />} />
+        <Route path="/creator/apply" element={<CreatorApplyPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/legal/:page" element={<LegalPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
       </Routes>
     </DashboardLayout>
@@ -63,6 +61,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         {showLoading && <LoadingScreen onComplete={() => setShowLoading(false)} />}
+        {!showLoading && <WelcomeModal />}
         <Router>
           <AppRoutes />
         </Router>

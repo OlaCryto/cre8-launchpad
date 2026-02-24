@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -32,36 +32,55 @@ import {Pausable} from "../security/Pausable.sol";
 contract LaunchpadFactory is
     Ownable,
     ReentrancyGuard,
-    Pausable,
-    ILaunchpadFactory
+    Pausable
 {
     using Clones for address;
     using SafeERC20 for IERC20;
 
+    // ============ Types ============
+
+    struct LaunchParams {
+        string name;
+        string symbol;
+        string description;
+        string imageURI;
+        string twitter;
+        string telegram;
+        string website;
+    }
+
+    struct LaunchInfo {
+        address token;
+        address bondingCurve;
+        address creator;
+        uint256 createdAt;
+        bool isGraduated;
+    }
+
+    // ============ Events ============
+
+    event TokenLaunched(address indexed token, address indexed bondingCurve, address indexed creator, string name, string symbol);
+    event TokenGraduated(address indexed token, address indexed pair, uint256 liquidityAdded);
+    event ImplementationUpdated(address indexed oldImpl, address indexed newImpl);
+    event BondingCurveImplUpdated(address indexed oldImpl, address indexed newImpl);
+    event RouterUpdated(address indexed oldRouter, address indexed newRouter);
+    event FeeManagerUpdated(address indexed oldFeeManager, address indexed newFeeManager);
+    event LiquidityManagerUpdated(address indexed oldManager, address indexed newManager);
+
     // ============ State Variables ============
 
-    // Implementation contracts for cloning
     address public tokenImplementation;
     address public bondingCurveImplementation;
 
-    // Core contracts
     address public router;
     address public feeManager;
     address public liquidityManager;
 
-    // Token tracking
     address[] public allTokens;
     mapping(address => LaunchInfo) public launchInfo;
     mapping(address => bool) public isLaunchpadToken;
 
-    // Configuration
-    uint256 public graduationThreshold = 69_000 ether; // $69K in AVAX terms
-
-    // ============ Events ============
-
-    event RouterUpdated(address indexed oldRouter, address indexed newRouter);
-    event FeeManagerUpdated(address indexed oldFeeManager, address indexed newFeeManager);
-    event LiquidityManagerUpdated(address indexed oldManager, address indexed newManager);
+    uint256 public graduationThreshold = 69_000 ether;
     event GraduationThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     // ============ Constructor ============
@@ -69,7 +88,7 @@ contract LaunchpadFactory is
     constructor(
         address tokenImpl_,
         address bondingCurveImpl_
-    ) Ownable(msg.sender) {
+    ) {
         if (tokenImpl_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (bondingCurveImpl_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
@@ -153,15 +172,48 @@ contract LaunchpadFactory is
         whenNotPaused
         returns (address token, address bondingCurve)
     {
+        return _createTokenInternal(params, msg.sender);
+    }
+
+    /**
+     * @notice Create a new token on behalf of a creator (called by router)
+     * @param params Token launch parameters
+     * @param creator The actual creator address
+     * @return token The deployed token address
+     * @return bondingCurve The deployed bonding curve address
+     */
+    function createTokenFor(LaunchParams calldata params, address creator)
+        external
+        payable
+        nonReentrant
+        whenNotPaused
+        returns (address token, address bondingCurve)
+    {
+        return _createTokenInternal(params, creator);
+    }
+
+    /**
+     * @notice Internal token creation logic
+     */
+    function _createTokenInternal(LaunchParams calldata params, address creator)
+        internal
+        returns (address token, address bondingCurve)
+    {
         // Validate inputs
         if (bytes(params.name).length == 0) revert LaunchpadErrors.InvalidTokenName();
         if (bytes(params.symbol).length == 0) revert LaunchpadErrors.InvalidTokenSymbol();
         if (bytes(params.name).length > 32) revert LaunchpadErrors.InvalidTokenName();
         if (bytes(params.symbol).length > 10) revert LaunchpadErrors.InvalidTokenSymbol();
+        if (creator == address(0)) revert LaunchpadErrors.ZeroAddress();
+
+        // Only router or direct caller can specify different creator
+        if (msg.sender != router && msg.sender != creator) {
+            revert LaunchpadErrors.Unauthorized();
+        }
 
         // Collect creation fee
         if (feeManager != address(0)) {
-            IFeeManager(feeManager).collectCreationFee{value: msg.value}(msg.sender);
+            IFeeManager(feeManager).collectCreationFee{value: msg.value}(creator);
         }
 
         // Deploy bonding curve clone
@@ -171,7 +223,7 @@ contract LaunchpadFactory is
         token = tokenImplementation.clone();
 
         // Initialize token
-        ILaunchpadToken.TokenMetadata memory metadata = ILaunchpadToken.TokenMetadata({
+        LaunchpadToken.TokenMetadata memory metadata = LaunchpadToken.TokenMetadata({
             name: params.name,
             symbol: params.symbol,
             description: params.description,
@@ -184,13 +236,13 @@ contract LaunchpadFactory is
         LaunchpadToken(token).initialize(
             params.name,
             params.symbol,
-            msg.sender,
+            creator,
             bondingCurve,
             metadata
         );
 
         // Initialize bonding curve
-        IBondingCurve.CurveParams memory curveParams = IBondingCurve.CurveParams({
+        BondingCurve.CurveParams memory curveParams = BondingCurve.CurveParams({
             basePrice: 0,  // Use defaults
             slope: 0,
             maxSupply: 0,
@@ -211,7 +263,7 @@ contract LaunchpadFactory is
         launchInfo[token] = LaunchInfo({
             token: token,
             bondingCurve: bondingCurve,
-            creator: msg.sender,
+            creator: creator,
             createdAt: block.timestamp,
             isGraduated: false
         });
@@ -219,7 +271,7 @@ contract LaunchpadFactory is
         allTokens.push(token);
         isLaunchpadToken[token] = true;
 
-        emit TokenLaunched(token, bondingCurve, msg.sender, params.name, params.symbol);
+        emit TokenLaunched(token, bondingCurve, creator, params.name, params.symbol);
 
         return (token, bondingCurve);
     }
@@ -245,8 +297,8 @@ contract LaunchpadFactory is
         BondingCurve curve = BondingCurve(payable(bondingCurve));
 
         // Check graduation status
-        IBondingCurve.CurveState curveState = curve.state();
-        if (curveState != IBondingCurve.CurveState.Graduating) {
+        BondingCurve.CurveState curveState = curve.state();
+        if (curveState != BondingCurve.CurveState.Graduating) {
             revert LaunchpadErrors.GraduationThresholdNotMet();
         }
 

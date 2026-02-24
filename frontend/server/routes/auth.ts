@@ -2,8 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import {
   findUserByTwitterId, findUserById, createUser, updateUserProfile,
-  findValidSession, createSession, deleteSession,
-} from '../db.js';
+  findValidSession, findValidSessionWithKeys, createSession, deleteSession,
+} from '../database.js';
 import { generateWallet, decryptPrivateKey } from '../services/wallet.js';
 import { generateAuthLink, handleCallback } from '../services/twitter.js';
 
@@ -109,7 +109,7 @@ router.post('/wallet-key', (req: Request, res: Response) => {
     return;
   }
 
-  const result = findValidSession(authHeader.slice(7));
+  const result = findValidSessionWithKeys(authHeader.slice(7));
   if (!result) {
     res.status(401).json({ error: 'Invalid or expired session' });
     return;

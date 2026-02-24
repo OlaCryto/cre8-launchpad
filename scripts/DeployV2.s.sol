@@ -53,7 +53,7 @@ contract DeployV2Script is Script {
     address constant TRADERJOE_ROUTER_MAINNET = 0x60aE616a2155Ee3d9A68541Ba4544862310933d4;
     address constant TRADERJOE_ROUTER_FUJI = 0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901;
 
-    function setUp() public {
+    function setUp() public virtual {
         treasury = vm.envOr("TREASURY_ADDRESS", msg.sender);
         emergencyMultisig = vm.envOr("EMERGENCY_MULTISIG", msg.sender);
 

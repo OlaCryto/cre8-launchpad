@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 /**
  * @title ILaunchpadToken
  * @notice Interface for tokens created through the launchpad
+ * @dev Does not extend IERC20 to avoid conflicts with upgradeable implementations
  */
-interface ILaunchpadToken is IERC20 {
+interface ILaunchpadToken {
     struct TokenMetadata {
         string name;
         string symbol;

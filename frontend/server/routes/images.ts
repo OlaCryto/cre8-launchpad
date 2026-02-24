@@ -6,16 +6,17 @@
  * GET  /api/images/:tokenAddress  — serve  (public)
  */
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Response } from 'express';
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { findValidSession } from '../db.js';
+import rateLimit from 'express-rate-limit';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { validateTokenAddress, isValidAddress } from '../middleware/validation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = process.env.UPLOADS_DIR || join(__dirname, '..', 'uploads');
 
-// Ensure uploads directory exists
 if (!existsSync(UPLOADS_DIR)) {
   mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -24,31 +25,16 @@ const router = Router();
 
 const MAX_BASE64_LENGTH = 7 * 1024 * 1024; // ~5MB decoded
 
-function isValidAddress(addr: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
+const uploadLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: { error: 'Too many uploads, please try again later' },
+});
 
 // ---- Upload (auth required) ----
 
-router.post('/:tokenAddress', (req: Request, res: Response) => {
-  // Auth
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing session token' });
-    return;
-  }
-  const session = findValidSession(authHeader.slice(7));
-  if (!session) {
-    res.status(401).json({ error: 'Invalid or expired session' });
-    return;
-  }
-
-  // Validate address
+router.post('/:tokenAddress', uploadLimiter, validateTokenAddress, requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const { tokenAddress } = req.params;
-  if (!isValidAddress(tokenAddress)) {
-    res.status(400).json({ error: 'Invalid token address' });
-    return;
-  }
 
   // Validate body
   const { image } = req.body;

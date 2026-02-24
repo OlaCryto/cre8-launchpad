@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -116,7 +116,7 @@ contract LaunchpadRouterV2 is
         address feeManager_,
         address creatorRegistry_,
         address activityTracker_
-    ) Ownable(msg.sender) {
+    ) {
         if (factory_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
         factory = LaunchpadFactoryV2(payable(factory_));
@@ -161,6 +161,9 @@ contract LaunchpadRouterV2 is
      * @param symbol Token symbol
      * @param imageURI Token image URI
      * @param description Token description
+     * @param twitter Twitter link
+     * @param telegram Telegram link
+     * @param website Website link
      * @param creatorBuyBps Percentage of supply for creator to buy (0-2000 = 0-20%)
      * @return token Token address
      * @return bondingCurve Bonding curve address
@@ -170,6 +173,9 @@ contract LaunchpadRouterV2 is
         string calldata symbol,
         string calldata imageURI,
         string calldata description,
+        string calldata twitter,
+        string calldata telegram,
+        string calldata website,
         uint256 creatorBuyBps
     )
         external
@@ -184,6 +190,9 @@ contract LaunchpadRouterV2 is
             symbol: symbol,
             imageURI: imageURI,
             description: description,
+            twitter: twitter,
+            telegram: telegram,
+            website: website,
             creatorBuyBps: creatorBuyBps
         });
 
@@ -202,6 +211,9 @@ contract LaunchpadRouterV2 is
      * @param symbol Token symbol
      * @param imageURI Token image URI
      * @param description Token description
+     * @param twitter Twitter link
+     * @param telegram Telegram link
+     * @param website Website link
      * @param creatorBuyBps Percentage of supply for creator to buy
      * @param whitelist Initial whitelist addresses
      * @param whitelistDuration Duration of whitelist phase (seconds)
@@ -214,6 +226,9 @@ contract LaunchpadRouterV2 is
         string calldata symbol,
         string calldata imageURI,
         string calldata description,
+        string calldata twitter,
+        string calldata telegram,
+        string calldata website,
         uint256 creatorBuyBps,
         address[] calldata whitelist,
         uint256 whitelistDuration,
@@ -231,6 +246,9 @@ contract LaunchpadRouterV2 is
             symbol: symbol,
             imageURI: imageURI,
             description: description,
+            twitter: twitter,
+            telegram: telegram,
+            website: website,
             creatorBuyBps: creatorBuyBps,
             whitelist: whitelist,
             whitelistDuration: whitelistDuration,
@@ -326,14 +344,12 @@ contract LaunchpadRouterV2 is
             feeManager.collectTradingFee{value: feeAmount}(token, msg.sender, avaxAmount, true);
         }
 
-        // Execute buy
+        // Execute buy (tokens are minted to this router contract)
         uint256 buyAmount = avaxAmount - feeAmount;
         tokensOut = curve.buy{value: buyAmount}(minTokensOut);
 
-        // Transfer tokens if recipient is different
-        if (recipient != msg.sender) {
-            IERC20(token).safeTransfer(recipient, tokensOut);
-        }
+        // Transfer tokens from router to recipient
+        IERC20(token).safeTransfer(recipient, tokensOut);
 
         // Get new price for activity tracking
         uint256 newPrice = curve.getCurrentPrice();
@@ -445,12 +461,12 @@ contract LaunchpadRouterV2 is
         BondingCurveV2 curve = BondingCurveV2(payable(info.bondingCurve));
 
         // Check/trigger graduation
-        IBondingCurve.CurveState curveState = curve.state();
-        if (curveState != IBondingCurve.CurveState.Graduating) {
+        BondingCurveV2.CurveState curveState = curve.state();
+        if (curveState != BondingCurveV2.CurveState.Graduating) {
             curve.triggerGraduationCheck();
             curveState = curve.state();
 
-            if (curveState != IBondingCurve.CurveState.Graduating) {
+            if (curveState != BondingCurveV2.CurveState.Graduating) {
                 revert LaunchpadErrors.GraduationThresholdNotMet();
             }
         }

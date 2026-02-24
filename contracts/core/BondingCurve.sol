@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -29,22 +29,42 @@ import {AntiBot} from "../security/AntiBot.sol";
 contract BondingCurve is
     Initializable,
     ReentrancyGuardUpgradeable,
-    IBondingCurve,
     AntiBot
 {
     using SafeERC20 for IERC20;
     using BondingCurveMath for uint256;
 
+    // ============ Types (from IBondingCurve) ============
+
+    enum CurveState { Trading, Graduating, Graduated }
+
+    struct CurveParams {
+        uint256 basePrice;
+        uint256 slope;
+        uint256 maxSupply;
+        uint256 graduationThreshold;
+    }
+
+    struct CurveState_ {
+        uint256 currentSupply;
+        uint256 reserveBalance;
+        CurveState state;
+    }
+
+    // ============ Events ============
+
+    event TokensPurchased(address indexed buyer, address indexed token, uint256 avaxIn, uint256 tokensOut, uint256 newPrice);
+    event TokensSold(address indexed seller, address indexed token, uint256 tokensIn, uint256 avaxOut, uint256 newPrice);
+    event GraduationTriggered(address indexed token, uint256 marketCap, uint256 reserveBalance);
+
     // ============ Constants ============
 
     uint256 internal constant PRECISION = 1e18;
-    uint256 internal constant BPS_DENOMINATOR = 10000;
 
-    // Default curve parameters for $1 launch
-    uint256 internal constant DEFAULT_BASE_PRICE = 0.0000000001 ether;  // Starting price
-    uint256 internal constant DEFAULT_SLOPE = 0.00000000000001 ether;   // Price increase per token
-    uint256 internal constant DEFAULT_MAX_SUPPLY = 800_000_000 * 1e18;  // 800M tokens
-    uint256 internal constant DEFAULT_GRADUATION_THRESHOLD = 69_000 ether; // $69K market cap
+    uint256 internal constant DEFAULT_BASE_PRICE = 1e12;  // 1 AVAX buys ~1 million tokens initially
+    uint256 internal constant DEFAULT_SLOPE = 0;         // Constant price (no bonding curve slope)
+    uint256 internal constant DEFAULT_MAX_SUPPLY = 800_000_000 * 1e18;
+    uint256 internal constant DEFAULT_GRADUATION_THRESHOLD = 69_000 ether;
 
     // ============ State Variables ============
 
@@ -112,8 +132,8 @@ contract BondingCurve is
         _initAntiBot(AntiBotConfig({
             enabled: true,
             cooldownPeriod: 30,           // 30 seconds between trades
-            maxTxAmountBps: 100,          // 1% of supply per tx
-            maxWalletAmountBps: 200,      // 2% of supply per wallet
+            maxTxAmountBps: 2000,         // 20% of supply per tx
+            maxWalletAmountBps: 5000,     // 50% of supply per wallet
             launchProtectionTime: 300     // 5 minutes of stricter limits
         }));
     }
@@ -404,24 +424,29 @@ contract BondingCurve is
 
     // ============ Admin Functions ============
 
+    modifier onlyFactoryOrRouter() {
+        if (msg.sender != factory && msg.sender != router) revert LaunchpadErrors.OnlyFactory();
+        _;
+    }
+
     /**
-     * @notice Update anti-bot configuration (factory only)
+     * @notice Update anti-bot configuration (factory or router)
      */
-    function updateAntiBotConfig(AntiBotConfig memory config) external onlyFactory {
+    function updateAntiBotConfig(AntiBotConfig memory config) external onlyFactoryOrRouter {
         _updateAntiBotConfig(config);
     }
 
     /**
-     * @notice Whitelist an address (factory only)
+     * @notice Whitelist an address (factory or router)
      */
-    function setWhitelisted(address user, bool status) external onlyFactory {
+    function setWhitelisted(address user, bool status) external onlyFactoryOrRouter {
         _setWhitelisted(user, status);
     }
 
     /**
-     * @notice Blacklist an address (factory only)
+     * @notice Blacklist an address (factory or router)
      */
-    function setBlacklisted(address user, bool status) external onlyFactory {
+    function setBlacklisted(address user, bool status) external onlyFactoryOrRouter {
         _setBlacklisted(user, status);
     }
 

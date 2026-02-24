@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import {ILaunchpadToken} from "../interfaces/ILaunchpadToken.sol";
@@ -31,37 +31,49 @@ contract LaunchpadTokenV2 is
     Initializable,
     ERC20Upgradeable,
     OwnableUpgradeable,
-    ReentrancyGuardUpgradeable,
-    ILaunchpadToken
+    ReentrancyGuardUpgradeable
 {
-    // ============ Enums ============
+    // ============ Types ============
 
-    enum LaunchMode {
-        Easy,   // Simple launch, immediate public trading
-        Pro     // Advanced launch with whitelist/blacklist/phases
+    struct TokenMetadata {
+        string name;
+        string symbol;
+        string description;
+        string imageURI;
+        string twitter;
+        string telegram;
+        string website;
     }
 
-    enum TradingPhase {
-        NotStarted,     // Trading hasn't begun
-        Whitelist,      // Only whitelisted addresses can trade
-        Public          // Public trading (after whitelist period)
-    }
+    enum LaunchMode { Easy, Pro }
 
-    // ============ Structs ============
+    enum TradingPhase { NotStarted, Whitelist, Public }
 
     struct ProLaunchConfig {
-        bool whitelistEnabled;          // Is whitelist active
-        bool blacklistEnabled;          // Is blacklist active
-        uint256 whitelistDuration;      // How long whitelist phase lasts (seconds)
-        uint256 tradingStartTime;       // When trading begins
-        uint256 publicStartTime;        // When public trading begins
+        bool whitelistEnabled;
+        bool blacklistEnabled;
+        uint256 whitelistDuration;
+        uint256 tradingStartTime;
+        uint256 publicStartTime;
     }
+
+    // ============ Events ============
+
+    event TokenGraduated(address indexed token, address indexed pair, uint256 liquidity);
+    event MetadataUpdated(string description, string imageURI);
+    event TradingPhaseChanged(TradingPhase indexed oldPhase, TradingPhase indexed newPhase);
+    event AddedToWhitelist(address indexed account);
+    event RemovedFromWhitelist(address indexed account);
+    event AddedToBlacklist(address indexed account);
+    event RemovedFromBlacklist(address indexed account);
+    event WhitelistBatchAdded(address[] accounts);
+    event ProConfigUpdated(uint256 whitelistDuration, uint256 tradingStartTime);
 
     // ============ Constants ============
 
-    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;       // 1 Billion
-    uint256 public constant BONDING_CURVE_SUPPLY = 800_000_000 * 1e18;  // 800 Million (80%)
-    uint256 public constant LIQUIDITY_SUPPLY = 200_000_000 * 1e18;      // 200 Million (20%)
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
+    uint256 public constant BONDING_CURVE_SUPPLY = 800_000_000 * 1e18;
+    uint256 public constant LIQUIDITY_SUPPLY = 200_000_000 * 1e18;
 
     uint256 public constant MAX_WHITELIST_DURATION = 7 days;
     uint256 public constant MIN_WHITELIST_DURATION = 1 hours;
@@ -78,26 +90,13 @@ contract LaunchpadTokenV2 is
 
     TokenMetadata private _metadata;
 
-    // Launch configuration
     LaunchMode public launchMode;
     ProLaunchConfig public proConfig;
 
-    // Whitelist/Blacklist mappings
     mapping(address => bool) public whitelist;
     mapping(address => bool) public blacklist;
 
-    // Whitelist count for tracking
     uint256 public whitelistCount;
-
-    // ============ Events ============
-
-    event TradingPhaseChanged(TradingPhase indexed oldPhase, TradingPhase indexed newPhase);
-    event AddedToWhitelist(address indexed account);
-    event RemovedFromWhitelist(address indexed account);
-    event AddedToBlacklist(address indexed account);
-    event RemovedFromBlacklist(address indexed account);
-    event WhitelistBatchAdded(address[] accounts);
-    event ProConfigUpdated(uint256 whitelistDuration, uint256 tradingStartTime);
 
     // ============ Modifiers ============
 
@@ -231,7 +230,7 @@ contract LaunchpadTokenV2 is
         if (bytes(symbol_).length == 0) revert LaunchpadErrors.InvalidTokenSymbol();
 
         __ERC20_init(name_, symbol_);
-        __Ownable_init(msg.sender);
+        __Ownable_init();
         __ReentrancyGuard_init();
 
         creator = creator_;
@@ -320,6 +319,7 @@ contract LaunchpadTokenV2 is
      */
     function addToWhitelistBatch(address[] calldata accounts) external onlyCreator {
         if (launchMode != LaunchMode.Pro) revert LaunchpadErrors.InvalidInput();
+        if (accounts.length > 100) revert LaunchpadErrors.InvalidInput();
 
         for (uint256 i = 0; i < accounts.length; i++) {
             if (accounts[i] != address(0) && !whitelist[accounts[i]]) {
@@ -399,11 +399,13 @@ contract LaunchpadTokenV2 is
     /**
      * @notice Override transfer to enforce trading rules
      */
-    function _update(
+    function _beforeTokenTransfer(
         address from,
         address to,
         uint256 amount
     ) internal virtual override {
+        super._beforeTokenTransfer(from, to, amount);
+
         // Allow minting and burning without restrictions
         if (from != address(0) && to != address(0)) {
             // Check if sender can trade
@@ -416,8 +418,6 @@ contract LaunchpadTokenV2 is
                 revert LaunchpadErrors.TradingDisabled();
             }
         }
-
-        super._update(from, to, amount);
     }
 
     // ============ Minting/Burning (Bonding Curve Only) ============
@@ -499,10 +499,31 @@ contract LaunchpadTokenV2 is
      * @param imageURI_ New image URI
      */
     function updateMetadata(string calldata description_, string calldata imageURI_) external onlyCreator {
+        if (bytes(description_).length > 500) revert LaunchpadErrors.InvalidInput();
+        if (bytes(imageURI_).length > 200) revert LaunchpadErrors.InvalidInput();
         _metadata.description = description_;
         _metadata.imageURI = imageURI_;
 
         emit MetadataUpdated(description_, imageURI_);
+    }
+
+    /**
+     * @notice Update social links (creator only)
+     * @param twitter_ Twitter link
+     * @param telegram_ Telegram link
+     * @param website_ Website link
+     */
+    function updateSocials(
+        string calldata twitter_,
+        string calldata telegram_,
+        string calldata website_
+    ) external onlyCreator {
+        if (bytes(twitter_).length > 200) revert LaunchpadErrors.InvalidInput();
+        if (bytes(telegram_).length > 200) revert LaunchpadErrors.InvalidInput();
+        if (bytes(website_).length > 200) revert LaunchpadErrors.InvalidInput();
+        _metadata.twitter = twitter_;
+        _metadata.telegram = telegram_;
+        _metadata.website = website_;
     }
 
     // ============ View Functions ============

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import {IFeeManager} from "../interfaces/IFeeManager.sol";
 import {LaunchpadErrors} from "../libraries/LaunchpadErrors.sol";
@@ -19,15 +19,29 @@ import {LaunchpadErrors} from "../libraries/LaunchpadErrors.sol";
  */
 contract FeeManager is
     Ownable,
-    ReentrancyGuard,
-    IFeeManager
+    ReentrancyGuard
 {
+    // ============ Types ============
+
+    struct FeeConfig {
+        uint256 platformFeeBps;
+        uint256 creatorFeeBps;
+        uint256 graduationFeeBps;
+        uint256 creationFee;
+    }
+
+    struct FeeDistribution {
+        uint256 platformAmount;
+        uint256 creatorAmount;
+        uint256 totalFee;
+    }
+
     // ============ Constants ============
 
     uint256 internal constant BPS_DENOMINATOR = 10000;
-    uint256 internal constant MAX_PLATFORM_FEE = 500;    // 5% max
-    uint256 internal constant MAX_CREATOR_FEE = 200;     // 2% max
-    uint256 internal constant MAX_GRADUATION_FEE = 300;  // 3% max
+    uint256 internal constant MAX_PLATFORM_FEE = 500;
+    uint256 internal constant MAX_CREATOR_FEE = 200;
+    uint256 internal constant MAX_GRADUATION_FEE = 300;
 
     // ============ State Variables ============
 
@@ -46,6 +60,10 @@ contract FeeManager is
 
     // ============ Events ============
 
+    event FeesCollected(address indexed token, address indexed payer, uint256 platformFee, uint256 creatorFee);
+    event FeesDistributed(address indexed creator, uint256 amount);
+    event FeeConfigUpdated(uint256 platformFeeBps, uint256 creatorFeeBps, uint256 graduationFeeBps, uint256 creationFee);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event CreatorRegistered(address indexed token, address indexed creator);
     event CreatorFeesWithdrawn(address indexed creator, uint256 amount);
     event TreasuryWithdrawal(address indexed to, uint256 amount);
@@ -61,7 +79,7 @@ contract FeeManager is
 
     // ============ Constructor ============
 
-    constructor(address treasury_) Ownable(msg.sender) {
+    constructor(address treasury_) {
         if (treasury_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
         treasury = treasury_;

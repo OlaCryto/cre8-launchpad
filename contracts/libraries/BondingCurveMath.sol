@@ -73,21 +73,26 @@ library BondingCurveMath {
             tokensOut = (avaxAmount * PRECISION) / currentPrice;
         } else {
             // Quadratic formula for linear bonding curve
-            // a = slope / (2 * PRECISION)
-            // b = currentPrice
-            // c = avaxAmount
+            // tokens = (sqrt(currentPrice² + 2*slope*avaxAmount/PRECISION) - currentPrice) * PRECISION / slope
+            //
+            // To avoid precision loss from catastrophic cancellation (sqrt(a²+b) - a ≈ 0 when b << a²),
+            // we use the identity: sqrt(a²+b) - a = b / (sqrt(a²+b) + a)
+            //
+            // So: tokens = (2*slope*avaxAmount/PRECISION) / (sqrt(discriminant) + currentPrice) * PRECISION / slope
+            //            = 2 * avaxAmount / (sqrt(discriminant) + currentPrice)
 
-            // discriminant = b² + 4ac = currentPrice² + 4 * (slope/2/PRECISION) * avaxAmount
-            //              = currentPrice² + 2 * slope * avaxAmount / PRECISION
-            uint256 discriminant = currentPrice * currentPrice +
-                (2 * slope * avaxAmount / PRECISION);
+            uint256 twoSlopeAvax = 2 * slope * avaxAmount / PRECISION;
+            uint256 discriminant = currentPrice * currentPrice + twoSlopeAvax;
 
             uint256 sqrtDiscriminant = sqrt(discriminant);
 
-            // tokens = (-b + sqrt(discriminant)) / (2a)
-            //        = (sqrt(discriminant) - currentPrice) * PRECISION / slope
-            if (sqrtDiscriminant > currentPrice) {
-                tokensOut = (sqrtDiscriminant - currentPrice) * PRECISION / slope;
+            // Using the identity: (sqrt(d) - cp) = twoSlopeAvax / (sqrt(d) + cp)
+            // tokens = twoSlopeAvax / (sqrt(d) + cp) * PRECISION / slope
+            //        = (2 * slope * avaxAmount / PRECISION) / (sqrt(d) + cp) * PRECISION / slope
+            //        = 2 * avaxAmount / (sqrt(d) + cp)
+            uint256 denom = sqrtDiscriminant + currentPrice;
+            if (denom > 0) {
+                tokensOut = 2 * avaxAmount / denom;
             } else {
                 tokensOut = 0;
             }

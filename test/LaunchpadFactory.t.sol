@@ -11,6 +11,7 @@ import {LiquidityLocker} from "../contracts/core/LiquidityLocker.sol";
 import {LiquidityManager} from "../contracts/core/LiquidityManager.sol";
 import {LaunchpadRouter} from "../contracts/router/LaunchpadRouter.sol";
 import {ILaunchpadFactory} from "../contracts/interfaces/ILaunchpadFactory.sol";
+import {ILaunchpadRouter} from "../contracts/interfaces/ILaunchpadRouter.sol";
 import {IBondingCurve} from "../contracts/interfaces/IBondingCurve.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -71,10 +72,13 @@ contract LaunchpadFactoryTest is Test {
         // Configure fee manager
         feeManager.setFactory(address(factory));
         feeManager.setRouter(address(router));
+
+        // Skip past launch protection period (300 seconds) to avoid stricter limits during testing
+        vm.warp(block.timestamp + 301);
     }
 
     function test_CreateToken() public {
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Test Token",
             symbol: "TEST",
             description: "A test token for the launchpad",
@@ -84,7 +88,7 @@ contract LaunchpadFactoryTest is Test {
             website: "https://testtoken.com"
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         vm.prank(creator);
         (address token, address bondingCurve) = router.createToken{value: creationFee}(params);
@@ -102,7 +106,7 @@ contract LaunchpadFactoryTest is Test {
         assertFalse(tokenContract.isGraduated());
 
         // Verify launch info
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
         assertEq(info.token, token);
         assertEq(info.bondingCurve, bondingCurve);
         assertEq(info.creator, creator);
@@ -110,7 +114,7 @@ contract LaunchpadFactoryTest is Test {
     }
 
     function test_CreateTokenAndBuy() public {
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Buy Token",
             symbol: "BUY",
             description: "Token with initial buy",
@@ -120,8 +124,8 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
-        uint256 buyAmount = 1 ether;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
+        uint256 buyAmount = 0.1 ether;  // Small buy to avoid anti-bot limits during launch protection
 
         vm.prank(creator);
         (address token,, uint256 tokensReceived) = router.createTokenAndBuy{value: creationFee + buyAmount}(
@@ -136,7 +140,7 @@ contract LaunchpadFactoryTest is Test {
 
     function test_BuyAndSellTokens() public {
         // Create token
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Trade Token",
             symbol: "TRADE",
             description: "",
@@ -146,15 +150,18 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         vm.prank(creator);
         (address token,) = router.createToken{value: creationFee}(params);
 
+        // Skip past launch protection period for new token
+        vm.warp(block.timestamp + 301);
+
         // Buyer1 buys
         vm.prank(buyer1);
         uint256 tokens1 = router.buy{value: 1 ether}(
-            ILaunchpadRouter.SwapParams({
+            LaunchpadRouter.SwapParams({
                 token: token,
                 amountIn: 1 ether,
                 minAmountOut: 0,
@@ -178,7 +185,7 @@ contract LaunchpadFactoryTest is Test {
 
         vm.prank(buyer1);
         uint256 avaxOut = router.sell(
-            ILaunchpadRouter.SwapParams({
+            LaunchpadRouter.SwapParams({
                 token: token,
                 amountIn: sellAmount,
                 minAmountOut: 0,
@@ -194,7 +201,7 @@ contract LaunchpadFactoryTest is Test {
 
     function test_GetQuotes() public {
         // Create token
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Quote Token",
             symbol: "QUOTE",
             description: "",
@@ -204,7 +211,7 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         vm.prank(creator);
         (address token,) = router.createToken{value: creationFee}(params);
@@ -220,10 +227,10 @@ contract LaunchpadFactoryTest is Test {
     }
 
     function test_MultipleTokenCreation() public {
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         for (uint256 i = 0; i < 5; i++) {
-            ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+            LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
                 name: string(abi.encodePacked("Token ", vm.toString(i))),
                 symbol: string(abi.encodePacked("TKN", vm.toString(i))),
                 description: "",
@@ -242,7 +249,7 @@ contract LaunchpadFactoryTest is Test {
 
     function test_CreatorFees() public {
         // Create token
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Fee Token",
             symbol: "FEE",
             description: "",
@@ -252,17 +259,20 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         vm.prank(creator);
         (address token,) = router.createToken{value: creationFee}(params);
 
+        // Skip past launch protection period
+        vm.warp(block.timestamp + 301);
+
         // Buy tokens (generates fees)
         vm.prank(buyer1);
-        router.buy{value: 10 ether}(
-            ILaunchpadRouter.SwapParams({
+        router.buy{value: 1 ether}(
+            LaunchpadRouter.SwapParams({
                 token: token,
-                amountIn: 10 ether,
+                amountIn: 1 ether,
                 minAmountOut: 0,
                 recipient: buyer1,
                 deadline: block.timestamp + 1 hours
@@ -286,7 +296,7 @@ contract LaunchpadFactoryTest is Test {
         // Pause factory
         factory.pause();
 
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Paused Token",
             symbol: "PAUSE",
             description: "",
@@ -296,7 +306,7 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         // Should fail when paused
         vm.expectRevert();
@@ -312,11 +322,11 @@ contract LaunchpadFactoryTest is Test {
     }
 
     function test_TokensByCreator() public {
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
         // Create multiple tokens
         for (uint256 i = 0; i < 3; i++) {
-            ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+            LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
                 name: string(abi.encodePacked("Creator Token ", vm.toString(i))),
                 symbol: string(abi.encodePacked("CT", vm.toString(i))),
                 description: "",
@@ -335,8 +345,8 @@ contract LaunchpadFactoryTest is Test {
         assertEq(creatorTokens.length, 3);
     }
 
-    function testFail_InvalidTokenName() public {
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+    function test_RevertWhen_InvalidTokenName() public {
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "",  // Empty name
             symbol: "TEST",
             description: "",
@@ -346,14 +356,15 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
-        uint256 creationFee = feeManager.feeConfig().creationFee;
+        (,,, uint256 creationFee) = feeManager.feeConfig();
 
+        vm.expectRevert();
         vm.prank(creator);
         router.createToken{value: creationFee}(params);
     }
 
-    function testFail_InsufficientCreationFee() public {
-        ILaunchpadFactory.LaunchParams memory params = ILaunchpadFactory.LaunchParams({
+    function test_RevertWhen_InsufficientCreationFee() public {
+        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
             name: "Test",
             symbol: "TEST",
             description: "",
@@ -363,6 +374,7 @@ contract LaunchpadFactoryTest is Test {
             website: ""
         });
 
+        vm.expectRevert();
         vm.prank(creator);
         router.createToken{value: 0}(params);  // No fee
     }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import {ILaunchpadToken} from "../interfaces/ILaunchpadToken.sol";
@@ -24,14 +24,30 @@ contract LaunchpadToken is
     Initializable,
     ERC20Upgradeable,
     OwnableUpgradeable,
-    ReentrancyGuardUpgradeable,
-    ILaunchpadToken
+    ReentrancyGuardUpgradeable
 {
+    // ============ Types ============
+
+    struct TokenMetadata {
+        string name;
+        string symbol;
+        string description;
+        string imageURI;
+        string twitter;
+        string telegram;
+        string website;
+    }
+
+    // ============ Events ============
+
+    event TokenGraduated(address indexed token, address indexed pair, uint256 liquidity);
+    event MetadataUpdated(string description, string imageURI);
+
     // ============ Constants ============
 
-    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;       // 1 Billion
-    uint256 public constant BONDING_CURVE_SUPPLY = 800_000_000 * 1e18;  // 800 Million (80%)
-    uint256 public constant LIQUIDITY_SUPPLY = 200_000_000 * 1e18;      // 200 Million (20%)
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
+    uint256 public constant BONDING_CURVE_SUPPLY = 800_000_000 * 1e18;
+    uint256 public constant LIQUIDITY_SUPPLY = 200_000_000 * 1e18;
 
     // ============ State Variables ============
 
@@ -92,7 +108,7 @@ contract LaunchpadToken is
         if (bytes(symbol_).length == 0) revert LaunchpadErrors.InvalidTokenSymbol();
 
         __ERC20_init(name_, symbol_);
-        __Ownable_init(msg.sender);
+        __Ownable_init();
         __ReentrancyGuard_init();
 
         creator = creator_;

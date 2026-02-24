@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -53,10 +53,37 @@ interface IJoeFactory {
 
 contract LiquidityManager is
     Ownable,
-    ReentrancyGuard,
-    ILiquidityManager
+    ReentrancyGuard
 {
     using SafeERC20 for IERC20;
+
+    // ============ Types ============
+
+    struct LiquidityParams {
+        address token;
+        uint256 tokenAmount;
+        uint256 avaxAmount;
+        uint256 minTokenAmount;
+        uint256 minAvaxAmount;
+        uint256 deadline;
+    }
+
+    struct LPInfo {
+        address pair;
+        uint256 lpTokens;
+        uint256 tokenAmount;
+        uint256 avaxAmount;
+        uint256 lockedUntil;
+        bool isLocked;
+    }
+
+    // ============ Events ============
+
+    event LiquidityAdded(address indexed token, address indexed pair, uint256 tokenAmount, uint256 avaxAmount, uint256 lpTokens);
+    event LiquidityLocked(address indexed token, address indexed pair, uint256 lpTokens, uint256 lockedUntil);
+    event LiquidityUnlocked(address indexed token, address pair, uint256 lpTokens, address recipient);
+    event DEXRouterUpdated(address indexed oldRouter, address indexed newRouter);
+    event FactoryUpdated(address indexed oldFactory, address indexed newFactory);
 
     // ============ State Variables ============
 
@@ -67,12 +94,7 @@ contract LiquidityManager is
 
     address public factory;
 
-    // LP info tracking
     mapping(address => LPInfo) public lpInfo;
-
-    // ============ Events ============
-
-    event FactoryUpdated(address indexed oldFactory, address indexed newFactory);
 
     // ============ Modifiers ============
 
@@ -88,7 +110,7 @@ contract LiquidityManager is
     constructor(
         address dexRouter_,
         address liquidityLocker_
-    ) Ownable(msg.sender) {
+    ) {
         if (dexRouter_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (liquidityLocker_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -63,7 +63,7 @@ contract LiquidityLocker is
 
     // ============ Constructor ============
 
-    constructor(address emergencyMultisig_) Ownable(msg.sender) {
+    constructor(address emergencyMultisig_) {
         if (emergencyMultisig_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         emergencyMultisig = emergencyMultisig_;
         nextLockId = 1; // Start from 1

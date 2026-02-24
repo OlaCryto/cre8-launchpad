@@ -3,18 +3,16 @@ cache/
 out/
 artifacts/
 
-# Ignores development broadcast logs
+# Broadcast logs (keep deployment records)
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
-
-# Dotenv file
+# Environment files (secrets)
 .env
 .env.local
 .env.*.local
+frontend/server/.env
 
 # Dependencies
 node_modules/
@@ -30,6 +28,7 @@ coverage/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
@@ -37,20 +36,38 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Testing
+# Logs
 *.log
 
-# Foundry lock
+# Foundry
 foundry.lock
 
 # SQLite databases
 *.db
 
-# Uploaded files
+# Server data
 frontend/server/uploads/
-
-# User database
 frontend/server/cre8-data.json
 
-# Windows system files
+# Windows
 nul
+
+# Internal dev docs (not for public repo)
+AGENTS.md
+CLAUDE.md
+FRONTEND_SPEC.md
+FRONTEND_STATUS.md
+AVALANCHE_LAUNCHPAD_RESEARCH.md
+Cre8_Competition_Plan.md
+Cre8_Competition_Plan*.docx
+frontend/app/info.md
+
+# Misc files
+*.zip
+*.PNG
+*.PNG1
+cre8_logo_pack/
+
+# SQLite WAL/SHM files
+*.db-shm
+*.db-wal

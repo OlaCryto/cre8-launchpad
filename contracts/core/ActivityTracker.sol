@@ -127,7 +127,7 @@ contract ActivityTracker is Ownable {
 
     // ============ Constructor ============
 
-    constructor() Ownable(msg.sender) {}
+    constructor() {}
 
     // ============ Configuration ============
 

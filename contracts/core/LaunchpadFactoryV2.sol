@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -11,6 +11,7 @@ import {ILaunchpadFactory} from "../interfaces/ILaunchpadFactory.sol";
 import {ILaunchpadToken} from "../interfaces/ILaunchpadToken.sol";
 import {IBondingCurve} from "../interfaces/IBondingCurve.sol";
 import {IFeeManager} from "../interfaces/IFeeManager.sol";
+import {FeeManager} from "./FeeManager.sol";
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {LaunchpadErrors} from "../libraries/LaunchpadErrors.sol";
 import {Pausable} from "../security/Pausable.sol";
@@ -49,6 +50,9 @@ contract LaunchpadFactoryV2 is
         string symbol;
         string imageURI;
         string description;
+        string twitter;
+        string telegram;
+        string website;
         uint256 creatorBuyBps;      // Percentage of supply for creator to buy (0-2000 = 0-20%)
     }
 
@@ -57,6 +61,9 @@ contract LaunchpadFactoryV2 is
         string symbol;
         string imageURI;
         string description;
+        string twitter;
+        string telegram;
+        string website;
         uint256 creatorBuyBps;
         address[] whitelist;        // Initial whitelist addresses
         uint256 whitelistDuration;  // Whitelist phase duration in seconds
@@ -132,7 +139,7 @@ contract LaunchpadFactoryV2 is
         address bondingCurveImpl_,
         address creatorRegistry_,
         address activityTracker_
-    ) Ownable(msg.sender) {
+    ) {
         if (tokenImpl_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (bondingCurveImpl_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
@@ -254,14 +261,14 @@ contract LaunchpadFactoryV2 is
         token = tokenImplementation.clone();
 
         // Initialize token (Easy mode)
-        ILaunchpadToken.TokenMetadata memory metadata = ILaunchpadToken.TokenMetadata({
+        LaunchpadTokenV2.TokenMetadata memory metadata = LaunchpadTokenV2.TokenMetadata({
             name: params.name,
             symbol: params.symbol,
             description: params.description,
             imageURI: params.imageURI,
-            twitter: "",
-            telegram: "",
-            website: ""
+            twitter: params.twitter,
+            telegram: params.telegram,
+            website: params.website
         });
 
         LaunchpadTokenV2(token).initialize(
@@ -273,7 +280,7 @@ contract LaunchpadFactoryV2 is
         );
 
         // Initialize bonding curve
-        IBondingCurve.CurveParams memory curveParams = IBondingCurve.CurveParams({
+        BondingCurveV2.CurveParams memory curveParams = BondingCurveV2.CurveParams({
             basePrice: 0,
             slope: 0,
             maxSupply: 0,
@@ -308,8 +315,8 @@ contract LaunchpadFactoryV2 is
         whenNotPaused
         returns (address token, address bondingCurve)
     {
-        // Validate creator has profile if required
-        string memory creatorHandle = _validateCreator(msg.sender);
+        // Pro launch requires verified creator status
+        string memory creatorHandle = _validateVerifiedCreator(msg.sender);
 
         // Validate params
         _validateTokenParams(params.name, params.symbol);
@@ -346,14 +353,14 @@ contract LaunchpadFactoryV2 is
         token = tokenImplementation.clone();
 
         // Initialize token (Pro mode with whitelist)
-        ILaunchpadToken.TokenMetadata memory metadata = ILaunchpadToken.TokenMetadata({
+        LaunchpadTokenV2.TokenMetadata memory metadata = LaunchpadTokenV2.TokenMetadata({
             name: params.name,
             symbol: params.symbol,
             description: params.description,
             imageURI: params.imageURI,
-            twitter: "",
-            telegram: "",
-            website: ""
+            twitter: params.twitter,
+            telegram: params.telegram,
+            website: params.website
         });
 
         LaunchpadTokenV2(token).initializePro(
@@ -368,7 +375,7 @@ contract LaunchpadFactoryV2 is
         );
 
         // Initialize bonding curve
-        IBondingCurve.CurveParams memory curveParams = IBondingCurve.CurveParams({
+        BondingCurveV2.CurveParams memory curveParams = BondingCurveV2.CurveParams({
             basePrice: 0,
             slope: 0,
             maxSupply: 0,
@@ -399,6 +406,14 @@ contract LaunchpadFactoryV2 is
             return profile.handle;
         }
         return "";
+    }
+
+    function _validateVerifiedCreator(address creator_) internal view returns (string memory handle) {
+        if (address(creatorRegistry) == address(0)) revert LaunchpadErrors.Unauthorized();
+        if (!creatorRegistry.hasProfile(creator_)) revert LaunchpadErrors.Unauthorized();
+        CreatorRegistry.CreatorProfile memory profile = creatorRegistry.getProfile(creator_);
+        if (!profile.isVerified) revert LaunchpadErrors.Unauthorized();
+        return profile.handle;
     }
 
     function _validateTokenParams(string calldata name, string calldata symbol) internal pure {
@@ -466,7 +481,7 @@ contract LaunchpadFactoryV2 is
 
         // Register with fee manager
         if (feeManager != address(0)) {
-            IFeeManager(feeManager).registerTokenCreator(token, creator_);
+            FeeManager(payable(feeManager)).registerTokenCreator(token, creator_);
         }
 
         emit TokenLaunched(token, bondingCurve, creator_, name, symbol, isProLaunch);
@@ -493,20 +508,19 @@ contract LaunchpadFactoryV2 is
         BondingCurveV2 curve = BondingCurveV2(payable(bondingCurve));
 
         // Check graduation status
-        IBondingCurve.CurveState curveState = curve.state();
-        if (curveState != IBondingCurve.CurveState.Graduating) {
+        BondingCurveV2.CurveState curveState = curve.state();
+        if (curveState != BondingCurveV2.CurveState.Graduating) {
             revert LaunchpadErrors.GraduationThresholdNotMet();
         }
 
         // Get AVAX from bonding curve
         uint256 avaxForLiquidity = curve.executeGraduation();
 
-        // Graduate the token
+        // Graduate the token — this transfers LIQUIDITY_SUPPLY to this contract
         LaunchpadTokenV2(token).graduate();
 
-        // Get token liquidity reserve
+        // Tokens are now in the factory after graduate() call
         uint256 tokenLiquidity = LaunchpadTokenV2(token).LIQUIDITY_SUPPLY();
-        IERC20(token).safeTransferFrom(token, address(this), tokenLiquidity);
 
         // Approve liquidity manager
         IERC20(token).approve(liquidityManager, tokenLiquidity);

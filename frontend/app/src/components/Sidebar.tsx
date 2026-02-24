@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   IconHome,
   IconPlus,
   IconUser,
   IconWallet,
   IconBriefcase,
+  IconShield,
   IconKey,
   IconLogout,
   IconAlertTriangle,
@@ -15,141 +16,9 @@ import {
   IconEye,
   IconEyeOff,
   IconX,
-  IconSearch,
-  IconInbox,
-  IconDashboard,
 } from '@tabler/icons-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOnChainTokens } from '@/hooks/useContracts';
-import { TokenImage } from '@/components/TokenImage';
 import { toast } from 'sonner';
-
-// ============ Search Overlay ============
-
-function SearchOverlay({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate();
-  const { tokens } = useOnChainTokens();
-  const [query, setQuery] = useState('');
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const results = query.trim()
-    ? tokens.filter((t) => {
-        const q = query.toLowerCase();
-        return (
-          t.name.toLowerCase().includes(q) ||
-          t.symbol.toLowerCase().includes(q) ||
-          t.address.toLowerCase().includes(q)
-        );
-      }).slice(0, 8)
-    : [];
-
-  // Reset selection when results change
-  useEffect(() => { setSelectedIdx(0); }, [query]);
-
-  // ESC to close, arrow keys + enter for navigation
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { onClose(); return; }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, results.length - 1)); return; }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)); return; }
-    if (e.key === 'Enter' && results[selectedIdx]) {
-      e.preventDefault();
-      navigate(`/token/${results[selectedIdx].address}`);
-      onClose();
-    }
-  }, [results, selectedIdx, navigate, onClose]);
-
-  // Global ESC listener
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  const formatPrice = (price: number) => {
-    if (price === 0) return '0';
-    if (price < 0.0001) return price.toFixed(8).replace(/0+$/, '');
-    if (price < 1) return price.toFixed(6).replace(/0+$/, '');
-    return price.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]" onClick={onClose} />
-      <div className="fixed top-0 left-0 right-0 z-[61] flex justify-center pt-[15vh]">
-        <div className="w-full max-w-lg mx-4 animate-slide-up">
-          <div className="bg-cre8-surface border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden">
-            {/* Input */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
-              <IconSearch size={18} className="text-dim shrink-0" />
-              <input
-                ref={inputRef}
-                autoFocus
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search tokens, addresses..."
-                className="flex-1 bg-transparent text-white text-sm placeholder:text-dim/60 focus:outline-none"
-              />
-              <kbd className="text-[10px] text-dim bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06] cursor-pointer" onClick={onClose}>ESC</kbd>
-            </div>
-
-            {/* Results */}
-            <div className="max-h-[360px] overflow-y-auto">
-              {!query.trim() ? (
-                <div className="p-4 text-center">
-                  <p className="text-dim text-sm">Type to search tokens...</p>
-                  {tokens.length > 0 && (
-                    <p className="text-dim/40 text-xs mt-1">{tokens.length} tokens indexed</p>
-                  )}
-                </div>
-              ) : results.length === 0 ? (
-                <div className="p-4 text-center">
-                  <p className="text-dim text-sm">No tokens found for "{query}"</p>
-                </div>
-              ) : (
-                <div className="py-1">
-                  {results.map((token, i) => (
-                    <Link
-                      key={token.address}
-                      to={`/token/${token.address}`}
-                      onClick={onClose}
-                      onMouseEnter={() => setSelectedIdx(i)}
-                      className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
-                        i === selectedIdx ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'
-                      }`}
-                    >
-                      <TokenImage
-                        tokenAddress={token.address}
-                        symbol={token.symbol}
-                        onChainImageURI={token.imageURI}
-                        className="w-8 h-8 rounded-lg overflow-hidden bg-white/[0.06] flex items-center justify-center shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-white truncate">{token.name}</span>
-                          <span className="text-xs text-cre8-red font-mono">${token.symbol}</span>
-                        </div>
-                        <p className="text-[10px] text-dim font-mono truncate">{token.address}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs text-white font-mono">{formatPrice(token.currentPrice)} AVAX</p>
-                        {token.isGraduated && (
-                          <span className="text-[9px] text-green-400 font-medium">Graduated</span>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
 
 export function Sidebar() {
   const location = useLocation();
@@ -158,14 +27,11 @@ export function Sidebar() {
   const [pkModal, setPkModal] = useState<'closed' | 'warning' | 'revealed'>('closed');
   const [pkCopied, setPkCopied] = useState(false);
   const [pkVisible, setPkVisible] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-
   const navItems = [
     { path: '/', icon: IconHome, label: 'Home' },
     { path: '/create', icon: IconPlus, label: 'Create' },
     { path: '/portfolio', icon: IconBriefcase, label: 'Portfolio' },
-    { path: '/inbox', icon: IconInbox, label: 'Inbox' },
-    ...(user?.creatorProfile ? [{ path: '/dashboard', icon: IconDashboard, label: 'Dashboard' }] : []),
+    ...(isAuthenticated ? [{ path: '/creator/apply', icon: IconShield, label: 'Creator' }] : []),
   ];
 
   const handleSignIn = async () => {
@@ -191,15 +57,6 @@ export function Sidebar() {
             className="w-9 h-9 object-contain transition-transform duration-200 group-hover:scale-110"
           />
         </Link>
-
-        {/* Search */}
-        <button
-          onClick={() => setSearchOpen(!searchOpen)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-dim hover:text-white hover:bg-white/[0.06] transition-colors mb-2"
-          title="Search"
-        >
-          <IconSearch size={20} stroke={1.5} />
-        </button>
 
         {/* Nav Items */}
         <nav className="flex-1 flex flex-col items-center gap-1">
@@ -316,11 +173,6 @@ export function Sidebar() {
           )}
         </div>
       </aside>
-
-      {/* Search Overlay */}
-      {searchOpen && (
-        <SearchOverlay onClose={() => setSearchOpen(false)} />
-      )}
 
       {/* Mobile Bottom Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden glass-nav border-t border-white/[0.06] border-b-0">

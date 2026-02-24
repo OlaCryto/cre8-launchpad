@@ -1,4 +1,4 @@
-// Contract addresses — deployed to Fuji testnet
+// Contract addresses — deployed to Fuji testnet (2026-02-24)
 export const CONTRACTS = {
   avalanche: {
     LaunchpadRouter: '0x...',
@@ -8,15 +8,20 @@ export const CONTRACTS = {
     FeeManager: '0x...',
     LiquidityManager: '0x...',
     LiquidityLocker: '0x...',
+    ActivityTracker: '0x...',
+    TokenImplementation: '0x...',
+    BondingCurveImplementation: '0x...',
   },
   fuji: {
-    LaunchpadRouter: '0xdF0c09E2dc3656c525F2a0E315FD4F8073589CC6',
-    LaunchManager: '0xE00EE83B30ef619171c93256Eedc72A6Dd8f9988',
-    LaunchpadFactory: '0x2fAf1F996052fC46c8Efc07C54C5a653725D80ae',
-    CreatorRegistry: '0xc10A4e61465744A0d9FE16D4c006b7CEaC752C7e',
-    FeeManager: '0xEc3719a76fFFbB9fE656C5c9d57a98E5Cc66eD77',
-    LiquidityManager: '0x6f3FE0A19678850DD5DF9796d667Ca30A046aD71',
-    LiquidityLocker: '0x37485Ae94C1b3a43235C13eC3BA2120120cfD932',
+    LaunchpadRouter: '0x29292B61e820736E5920e8f0cc42C9D3e699f5eA',
+    LaunchpadFactory: '0xeD1A3Af4faA086BF4dff4Fa2cd4d49F0138DFad8',
+    CreatorRegistry: '0x2BE70a5EC63FB415635956519D243c7c85C587E5',
+    FeeManager: '0xe033C8Bd9488844358f2a2D41267D51FD2a648B3',
+    LiquidityManager: '0xc52B09eca7cC3828adF692B4cd2f685dFF30e6B0',
+    LiquidityLocker: '0xFDC16396dcff7960B7ba9F3554a5C28576C2D9a8',
+    ActivityTracker: '0xaBAeDD8b59Ee92D2d9266F9b07E9c6b92EfC142E',
+    TokenImplementation: '0x8827948871eC905fA432dE3CAcbD43CAB54E1DaD',
+    BondingCurveImplementation: '0xF36E5D363E057Ecd11D04D51F0f2955C15A0254b',
   },
 } as const;
 

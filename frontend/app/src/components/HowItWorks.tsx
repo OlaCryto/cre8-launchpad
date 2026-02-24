@@ -26,29 +26,13 @@ const steps = [
   },
 ];
 
-const modes = [
-  {
-    name: 'Trenches Mode',
-    icon: Zap,
-    color: '#F59E0B',
-    features: [
-      'Launch in seconds',
-      'No registration needed',
-      'Pure bonding curve',
-      'Instant trading',
-    ],
-  },
-  {
-    name: 'Forge Mode',
-    icon: Rocket,
-    color: '#E84142',
-    features: [
-      'Optional presale',
-      'Whitelist window',
-      'Team vesting',
-      'Creator profile',
-    ],
-  },
+const features = [
+  { text: 'Launch in seconds for ~$1', color: '#E84142' },
+  { text: 'No registration needed', color: '#E84142' },
+  { text: 'Fair bonding curve pricing', color: '#E84142' },
+  { text: 'Instant public trading', color: '#E84142' },
+  { text: 'Anti-bot protection built in', color: '#E84142' },
+  { text: 'Auto-graduate to TraderJoe DEX', color: '#E84142' },
 ];
 
 export function HowItWorks() {
@@ -122,31 +106,27 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Dual Mode Comparison */}
+        {/* Features */}
         <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Choose Your Mode</h2>
-          <p className="text-[#8B8B9E]">Two ways to launch. Same fair mechanics.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Why Cre8?</h2>
+          <p className="text-[#8B8B9E]">The fairest way to launch a token on Avalanche.</p>
         </div>
 
-        <div ref={modesRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {modes.map((mode, i) => (
-            <div key={i} className="mode-card bg-[#050508] border border-white/[0.06] rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${mode.color}20` }}>
-                  <mode.icon className="w-6 h-6" style={{ color: mode.color }} />
-                </div>
-                <h3 className="text-xl font-bold text-white">{mode.name}</h3>
-              </div>
-              <ul className="space-y-3">
-                {mode.features.map((feature, j) => (
-                  <li key={j} className="flex items-center gap-2 text-[#8B8B9E]">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: mode.color }} />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
+        <div ref={modesRef} className="bg-[#050508] border border-white/[0.06] rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#E8414220]">
+              <Zap className="w-6 h-6 text-[#E84142]" />
             </div>
-          ))}
+            <h3 className="text-xl font-bold text-white">Fair Launch</h3>
+          </div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {features.map((feature, j) => (
+              <li key={j} className="mode-card flex items-center gap-2 text-[#8B8B9E]">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: feature.color }} />
+                {feature.text}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Token Economics */}

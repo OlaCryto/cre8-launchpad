@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -32,25 +32,46 @@ interface ILaunchpadTokenV2 is ILaunchpadToken {
 contract BondingCurveV2 is
     Initializable,
     ReentrancyGuardUpgradeable,
-    IBondingCurve,
     AntiBot
 {
     using SafeERC20 for IERC20;
     using BondingCurveMath for uint256;
 
+    // ============ Types ============
+
+    enum CurveState { Trading, Graduating, Graduated }
+
+    struct CurveParams {
+        uint256 basePrice;
+        uint256 slope;
+        uint256 maxSupply;
+        uint256 graduationThreshold;
+    }
+
+    struct CurveState_ {
+        uint256 currentSupply;
+        uint256 reserveBalance;
+        CurveState state;
+    }
+
+    // ============ Events ============
+
+    event TokensPurchased(address indexed buyer, address indexed token, uint256 avaxIn, uint256 tokensOut, uint256 newPrice);
+    event TokensSold(address indexed seller, address indexed token, uint256 tokensIn, uint256 avaxOut, uint256 newPrice);
+    event GraduationTriggered(address indexed token, uint256 marketCap, uint256 reserveBalance);
+    event CreatorInitialBuy(address indexed creator, uint256 avaxAmount, uint256 tokensReceived, uint256 percentageOfSupply);
+    event TradingPairSet(address indexed pair);
+
     // ============ Constants ============
 
     uint256 internal constant PRECISION = 1e18;
-    uint256 internal constant BPS_DENOMINATOR = 10000;
 
-    // Default curve parameters for $1 launch
-    uint256 internal constant DEFAULT_BASE_PRICE = 0.0000000001 ether;
-    uint256 internal constant DEFAULT_SLOPE = 0.00000000000001 ether;
+    uint256 internal constant DEFAULT_BASE_PRICE = 1e12;  // 1 AVAX buys ~1 million tokens initially
+    uint256 internal constant DEFAULT_SLOPE = 0;         // Constant price (no bonding curve slope)
     uint256 internal constant DEFAULT_MAX_SUPPLY = 800_000_000 * 1e18;
     uint256 internal constant DEFAULT_GRADUATION_THRESHOLD = 69_000 ether;
 
-    // Creator initial buy limits
-    uint256 public constant MAX_CREATOR_BUY_BPS = 2000; // 20% max initial buy
+    uint256 public constant MAX_CREATOR_BUY_BPS = 2000;
 
     // ============ State Variables ============
 
@@ -65,24 +86,11 @@ contract BondingCurveV2 is
     uint256 public reserveBalance;
     CurveState public state;
 
-    // Creator initial buy tracking
     address public creator;
-    uint256 public creatorInitialBuyBps;  // Percentage of supply creator bought initially
-    uint256 public creatorInitialTokens;   // Actual tokens creator received
+    uint256 public creatorInitialBuyBps;
+    uint256 public creatorInitialTokens;
 
-    // Trading pair (AVAX by default, could support platform token)
-    address public tradingPair; // address(0) = AVAX
-
-    // ============ Events ============
-
-    event CreatorInitialBuy(
-        address indexed creator,
-        uint256 avaxAmount,
-        uint256 tokensReceived,
-        uint256 percentageOfSupply
-    );
-
-    event TradingPairSet(address indexed pair);
+    address public tradingPair;
 
     // ============ Modifiers ============
 
@@ -149,8 +157,8 @@ contract BondingCurveV2 is
         _initAntiBot(AntiBotConfig({
             enabled: true,
             cooldownPeriod: 30,
-            maxTxAmountBps: 100,
-            maxWalletAmountBps: 200,
+            maxTxAmountBps: 2000,
+            maxWalletAmountBps: 5000,
             launchProtectionTime: 300
         }));
     }
@@ -188,8 +196,8 @@ contract BondingCurveV2 is
         _initAntiBot(AntiBotConfig({
             enabled: true,
             cooldownPeriod: 30,
-            maxTxAmountBps: 100,
-            maxWalletAmountBps: 200,
+            maxTxAmountBps: 2000,
+            maxWalletAmountBps: 5000,
             launchProtectionTime: 300
         }));
 

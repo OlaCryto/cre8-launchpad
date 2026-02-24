@@ -2,14 +2,14 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {ILaunchpadRouter} from "../interfaces/ILaunchpadRouter.sol";
-import {ILaunchpadFactory} from "../interfaces/ILaunchpadFactory.sol";
-import {IBondingCurve} from "../interfaces/IBondingCurve.sol";
+import {LaunchpadFactory} from "../core/LaunchpadFactory.sol";
+import {BondingCurve} from "../core/BondingCurve.sol";
 import {IFeeManager} from "../interfaces/IFeeManager.sol";
+import {FeeManager} from "../core/FeeManager.sol";
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {LaunchpadErrors} from "../libraries/LaunchpadErrors.sol";
 import {Pausable} from "../security/Pausable.sol";
@@ -29,14 +29,29 @@ import {Pausable} from "../security/Pausable.sol";
 contract LaunchpadRouter is
     Ownable,
     ReentrancyGuard,
-    Pausable,
-    ILaunchpadRouter
+    Pausable
 {
     using SafeERC20 for IERC20;
 
+    // ============ Types ============
+
+    struct SwapParams {
+        address token;
+        uint256 amountIn;
+        uint256 minAmountOut;
+        address recipient;
+        uint256 deadline;
+    }
+
+    // ============ Events ============
+
+    event TokenCreated(address indexed token, address indexed creator, string name, string symbol);
+    event SwapExecuted(address indexed user, address indexed token, bool isBuy, uint256 amountIn, uint256 amountOut);
+    event GraduationExecuted(address indexed token, address indexed pair, uint256 avaxLiquidity, uint256 tokenLiquidity);
+
     // ============ State Variables ============
 
-    ILaunchpadFactory public factory;
+    LaunchpadFactory public factory;
     IFeeManager public feeManager;
     ILiquidityManager public liquidityManager;
 
@@ -58,10 +73,10 @@ contract LaunchpadRouter is
         address factory_,
         address feeManager_,
         address liquidityManager_
-    ) Ownable(msg.sender) {
+    ) {
         if (factory_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
-        factory = ILaunchpadFactory(factory_);
+        factory = LaunchpadFactory(payable(factory_));
 
         if (feeManager_ != address(0)) {
             feeManager = IFeeManager(feeManager_);
@@ -80,7 +95,7 @@ contract LaunchpadRouter is
      */
     function setFactory(address factory_) external onlyOwner {
         if (factory_ == address(0)) revert LaunchpadErrors.ZeroAddress();
-        factory = ILaunchpadFactory(factory_);
+        factory = LaunchpadFactory(payable(factory_));
     }
 
     /**
@@ -109,7 +124,7 @@ contract LaunchpadRouter is
      * @return token New token address
      * @return bondingCurve New bonding curve address
      */
-    function createToken(ILaunchpadFactory.LaunchParams calldata params)
+    function createToken(LaunchpadFactory.LaunchParams calldata params)
         external
         payable
         nonReentrant
@@ -123,12 +138,12 @@ contract LaunchpadRouter is
 
         if (msg.value < creationFee) revert LaunchpadErrors.InsufficientCreationFee();
 
-        // Create token through factory
-        (token, bondingCurve) = factory.createToken{value: creationFee}(params);
+        // Create token through factory (pass msg.sender as actual creator)
+        (token, bondingCurve) = factory.createTokenFor{value: creationFee}(params, msg.sender);
 
         // Register creator with fee manager
         if (address(feeManager) != address(0)) {
-            feeManager.registerTokenCreator(token, msg.sender);
+            FeeManager(payable(address(feeManager))).registerTokenCreator(token, msg.sender);
         }
 
         // Refund excess
@@ -151,7 +166,7 @@ contract LaunchpadRouter is
      * @return tokensReceived Amount of tokens bought
      */
     function createTokenAndBuy(
-        ILaunchpadFactory.LaunchParams calldata params,
+        LaunchpadFactory.LaunchParams calldata params,
         uint256 minTokensOut
     )
         external
@@ -167,12 +182,12 @@ contract LaunchpadRouter is
 
         if (msg.value <= creationFee) revert LaunchpadErrors.InsufficientPayment();
 
-        // Create token
-        (token, bondingCurve) = factory.createToken{value: creationFee}(params);
+        // Create token (pass msg.sender as actual creator)
+        (token, bondingCurve) = factory.createTokenFor{value: creationFee}(params, msg.sender);
 
         // Register creator
         if (address(feeManager) != address(0)) {
-            feeManager.registerTokenCreator(token, msg.sender);
+            FeeManager(payable(address(feeManager))).registerTokenCreator(token, msg.sender);
         }
 
         // Buy tokens with remaining AVAX
@@ -202,7 +217,7 @@ contract LaunchpadRouter is
     {
         if (msg.value == 0) revert LaunchpadErrors.ZeroAmount();
 
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params.token);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params.token);
         if (info.isGraduated) revert LaunchpadErrors.TokenAlreadyGraduated();
 
         tokensOut = _executeBuy(
@@ -231,7 +246,7 @@ contract LaunchpadRouter is
     {
         if (params.amountIn == 0) revert LaunchpadErrors.ZeroAmount();
 
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params.token);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params.token);
         if (info.isGraduated) revert LaunchpadErrors.TokenAlreadyGraduated();
 
         avaxOut = _executeSell(
@@ -265,7 +280,7 @@ contract LaunchpadRouter is
             if (!factory.isLaunchpadToken(params[i].token)) continue;
             if (block.timestamp > params[i].deadline) continue;
 
-            ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params[i].token);
+            LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(params[i].token);
             if (info.isGraduated) continue;
 
             uint256 buyValue = params[i].amountIn;
@@ -306,7 +321,7 @@ contract LaunchpadRouter is
         uint256 minTokensOut,
         address recipient
     ) internal returns (uint256 tokensOut) {
-        IBondingCurve curve = IBondingCurve(bondingCurve);
+        BondingCurve curve = BondingCurve(payable(bondingCurve));
 
         // Calculate and collect fee
         uint256 feeAmount = 0;
@@ -318,14 +333,12 @@ contract LaunchpadRouter is
             feeManager.collectTradingFee{value: feeAmount}(token, msg.sender, avaxAmount, true);
         }
 
-        // Execute buy on bonding curve
+        // Execute buy on bonding curve (tokens are minted to this router contract)
         uint256 buyAmount = avaxAmount - feeAmount;
         tokensOut = curve.buy{value: buyAmount}(minTokensOut);
 
-        // Transfer tokens to recipient if not sender
-        if (recipient != msg.sender) {
-            IERC20(token).safeTransfer(recipient, tokensOut);
-        }
+        // Transfer tokens from router to recipient
+        IERC20(token).safeTransfer(recipient, tokensOut);
 
         emit SwapExecuted(msg.sender, token, true, avaxAmount, tokensOut);
 
@@ -342,7 +355,7 @@ contract LaunchpadRouter is
         uint256 minAvaxOut,
         address recipient
     ) internal returns (uint256 avaxOut) {
-        IBondingCurve curve = IBondingCurve(bondingCurve);
+        BondingCurve curve = BondingCurve(payable(bondingCurve));
 
         // Transfer tokens from user to this contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), tokenAmount);
@@ -389,19 +402,19 @@ contract LaunchpadRouter is
         validToken(token)
         returns (address pair)
     {
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
         if (info.isGraduated) revert LaunchpadErrors.TokenAlreadyGraduated();
 
-        IBondingCurve curve = IBondingCurve(info.bondingCurve);
+        BondingCurve curve = BondingCurve(payable(info.bondingCurve));
 
         // Check if graduation threshold is met
-        IBondingCurve.CurveState curveState = curve.state();
-        if (curveState != IBondingCurve.CurveState.Graduating) {
+        BondingCurve.CurveState curveState = curve.state();
+        if (curveState != BondingCurve.CurveState.Graduating) {
             // Try to trigger graduation check
             curve.triggerGraduationCheck();
             curveState = curve.state();
 
-            if (curveState != IBondingCurve.CurveState.Graduating) {
+            if (curveState != BondingCurve.CurveState.Graduating) {
                 revert LaunchpadErrors.GraduationThresholdNotMet();
             }
         }
@@ -431,8 +444,8 @@ contract LaunchpadRouter is
     {
         if (!factory.isLaunchpadToken(token)) revert LaunchpadErrors.NotLaunchpadToken();
 
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
-        IBondingCurve curve = IBondingCurve(info.bondingCurve);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
+        BondingCurve curve = BondingCurve(payable(info.bondingCurve));
 
         // Calculate fee
         if (address(feeManager) != address(0)) {
@@ -462,8 +475,8 @@ contract LaunchpadRouter is
     {
         if (!factory.isLaunchpadToken(token)) revert LaunchpadErrors.NotLaunchpadToken();
 
-        ILaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
-        IBondingCurve curve = IBondingCurve(info.bondingCurve);
+        LaunchpadFactory.LaunchInfo memory info = factory.getLaunchInfo(token);
+        BondingCurve curve = BondingCurve(payable(info.bondingCurve));
 
         // Get quote from bonding curve
         uint256 grossAvaxOut;

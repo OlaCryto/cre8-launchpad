@@ -1012,3 +1012,78 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
 
   return { trades, isLoading };
 }
+
+// ============ Price Changes (from backend API) ============
+
+interface PriceChanges {
+  price: number;
+  change_5m: number;
+  change_1h: number;
+  change_6h: number;
+  change_24h: number;
+}
+
+export function usePriceChanges(tokenAddress: string | undefined) {
+  const [data, setData] = useState<PriceChanges | null>(null);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+  useEffect(() => {
+    if (!tokenAddress) return;
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch(`${API_URL}/api/prices/${tokenAddress}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch { /* API may not be running */ }
+    }
+
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [tokenAddress, API_URL]);
+
+  return data;
+}
+
+// ============ Creator Verification ============
+
+export function useCreatorStatus() {
+  const [status, setStatus] = useState<{
+    is_verified: boolean;
+    has_pending: boolean;
+    project_name?: string;
+  } | null>(null);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+  useEffect(() => {
+    const session = localStorage.getItem('cre8_session');
+    if (!session) return;
+
+    fetch(`${API_URL}/api/creators/status`, {
+      headers: { Authorization: `Bearer ${session}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStatus(data); })
+      .catch(() => {});
+  }, [API_URL]);
+
+  return status;
+}
+
+export function useIsVerifiedCreator(address: string | undefined) {
+  const [verified, setVerified] = useState(false);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+  useEffect(() => {
+    if (!address) return;
+    fetch(`${API_URL}/api/creators/check/${address}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setVerified(data.is_verified); })
+      .catch(() => {});
+  }, [address, API_URL]);
+
+  return verified;
+}

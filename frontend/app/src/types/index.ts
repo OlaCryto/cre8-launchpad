@@ -11,7 +11,7 @@ export interface Token {
   holders: string;
   createdAt: string;
   timeAgo: string;
-  mode: 'trenches' | 'forge';
+  mode: 'trenches';
   isNew: boolean;
   priceHistory: number[];
   isPositive: boolean;
