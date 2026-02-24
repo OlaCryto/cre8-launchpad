@@ -281,6 +281,10 @@ ADMIN_API_KEY=...
 
 ---
 
+## Author
+
+Built by [@NetWhizCrypto](https://x.com/NetWhizCrypto)
+
 ## License
 
 MIT
@@ -288,6 +292,7 @@ MIT
 ## Links
 
 - **Website:** [cre8.bond](https://cre8.bond)
+- **X (Twitter):** [@NetWhizCrypto](https://x.com/NetWhizCrypto)
 - **Network:** [Avalanche C-Chain](https://www.avax.network/)
 - **DEX:** [TraderJoe](https://traderjoexyz.com/)
 - **Competition:** [Avalanche Build Games 2026](https://build.avax.network/build-games)

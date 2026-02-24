@@ -178,7 +178,7 @@ Yes. Cre8 is an official entry in the [Avalanche Build Games 2026](https://build
 
 ### Where can I follow Cre8?
 - **Website:** [cre8.bond](https://cre8.bond)
-- Stay tuned for X (Twitter) and community channels
+- **X (Twitter):** [@NetWhizCrypto](https://x.com/NetWhizCrypto)
 
 ### How can I get involved?
 Launch a token on testnet, provide feedback, and follow the project. Early supporters will be recognized.

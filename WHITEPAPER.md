@@ -289,7 +289,7 @@ Cre8 is built exclusively on Avalanche C-Chain for several reasons:
 
 ## 9. Team
 
-Built by a long-time Avalanche community member and Arena power user who experienced firsthand the problems Cre8 solves. The platform is born from real frustration with the status quo, not theoretical research.
+Built by [@NetWhizCrypto](https://x.com/NetWhizCrypto) — a long-time Avalanche community member and Arena power user who experienced firsthand the problems Cre8 solves. The platform is born from real frustration with the status quo, not theoretical research.
 
 ---
 
