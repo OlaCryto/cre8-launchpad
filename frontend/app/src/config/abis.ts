@@ -31,53 +31,22 @@ export const LaunchpadRouterABI = [
   TokenCreatedEvent,
   SwapExecutedEvent,
   {
-    name: 'createToken',
+    name: 'createTokenEasy',
     type: 'function',
     stateMutability: 'payable',
     inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          { name: 'name', type: 'string' },
-          { name: 'symbol', type: 'string' },
-          { name: 'description', type: 'string' },
-          { name: 'imageURI', type: 'string' },
-          { name: 'twitter', type: 'string' },
-          { name: 'telegram', type: 'string' },
-          { name: 'website', type: 'string' },
-        ],
-      },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'imageURI', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'twitter', type: 'string' },
+      { name: 'telegram', type: 'string' },
+      { name: 'website', type: 'string' },
+      { name: 'creatorBuyBps', type: 'uint256' },
     ],
     outputs: [
       { name: 'token', type: 'address' },
       { name: 'bondingCurve', type: 'address' },
-    ],
-  },
-  {
-    name: 'createTokenAndBuy',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          { name: 'name', type: 'string' },
-          { name: 'symbol', type: 'string' },
-          { name: 'description', type: 'string' },
-          { name: 'imageURI', type: 'string' },
-          { name: 'twitter', type: 'string' },
-          { name: 'telegram', type: 'string' },
-          { name: 'website', type: 'string' },
-        ],
-      },
-      { name: 'minTokensOut', type: 'uint256' },
-    ],
-    outputs: [
-      { name: 'token', type: 'address' },
-      { name: 'bondingCurve', type: 'address' },
-      { name: 'tokensReceived', type: 'uint256' },
     ],
   },
   {

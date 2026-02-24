@@ -57,16 +57,21 @@ export function CreateTokenPage() {
     if (!formData.ticker.trim()) { toast.error('Ticker is required'); return; }
 
     try {
+      // Convert initialBuy AVAX slider to basis points (0-2000 = 0-20% of supply)
+      // The slider value is in AVAX; map it to a rough BPS percentage
+      const maxBuyPercent = 20;
+      const buyPercent = maxBuy > 0 ? Math.min((initialBuy / maxBuy) * maxBuyPercent, maxBuyPercent) : 0;
+      const creatorBuyBps = Math.round(buyPercent * 100);
+
       const receipt = await createToken({
         name: formData.name,
         symbol: formData.ticker.replace('$', ''),
         description: formData.description,
-        imageURI: imagePreview && !imagePreview.startsWith('data:') ? imagePreview : '',
+        imageURI: imagePreview || '',
         twitter: formData.twitter,
         telegram: formData.telegram,
         website: formData.website,
-        buyAmountAvax: initialBuy,
-        minTokensOut: 0n,
+        creatorBuyBps,
       });
 
       if (receipt.tokenAddress && imagePreview?.startsWith('data:')) {

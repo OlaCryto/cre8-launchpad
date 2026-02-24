@@ -11,6 +11,7 @@ import { LaunchpadRouterABI, CreatorRegistryABI, ERC20ABI, TokenCreatedEvent } f
 import { useAuth } from '@/contexts/AuthContext';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
+const CREATION_FEE = parseEther('0.02');
 
 // ============ Types ============
 
@@ -42,7 +43,32 @@ function useWalletClient() {
 
 // ============ Hooks ============
 
-/** Create a token with optional initial buy */
+/** Ensure the connected wallet has a CreatorRegistry profile; create one if not. */
+async function ensureProfile(wallet: ReturnType<typeof useWalletClient>) {
+  if (!wallet) return;
+  try {
+    const has = await publicClient.readContract({
+      address: contracts.CreatorRegistry as Address,
+      abi: CreatorRegistryABI,
+      functionName: 'hasProfile',
+      args: [wallet.account.address],
+    });
+    if (has) return;
+
+    const shortAddr = wallet.account.address.slice(0, 6);
+    const hash = await wallet.walletClient.writeContract({
+      address: contracts.CreatorRegistry as Address,
+      abi: CreatorRegistryABI,
+      functionName: 'createProfile',
+      args: [shortAddr, shortAddr, '', ''],
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+  } catch {
+    // Profile creation is best-effort; the main tx will show proper error
+  }
+}
+
+/** Create a token via createTokenEasy with optional creator initial buy */
 export function useCreateTokenAndBuy() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
   const wallet = useWalletClient();
@@ -55,48 +81,43 @@ export function useCreateTokenAndBuy() {
     twitter: string;
     telegram: string;
     website: string;
-    buyAmountAvax: number;
-    minTokensOut?: bigint;
+    creatorBuyBps: number;
   }) => {
     if (!wallet) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const creationFee = parseEther('0.02');
-      // Router requires msg.value > creationFee, so always include a minimum buy
-      const buyAmount = params.buyAmountAvax > 0
-        ? parseEther(params.buyAmountAvax.toString())
-        : parseEther('0.001'); // minimum buy so msg.value > creationFee
-      const totalValue = creationFee + buyAmount;
+      // Auto-create a minimal creator profile if the wallet doesn't have one
+      await ensureProfile(wallet);
 
-      // Strip base64 data URIs — too large for on-chain storage
       const safeImageURI = params.imageURI.startsWith('data:') ? '' : params.imageURI;
+
+      // msg.value = creation fee + any AVAX for the creator buy
+      const buyAvax = params.creatorBuyBps > 0 ? parseEther('0.01') : 0n;
+      const totalValue = CREATION_FEE + buyAvax;
 
       const hash = await wallet.walletClient.writeContract({
         address: contracts.LaunchpadRouter as Address,
         abi: LaunchpadRouterABI,
-        functionName: 'createTokenAndBuy',
+        functionName: 'createTokenEasy',
         args: [
-          {
-            name: params.name,
-            symbol: params.symbol,
-            description: params.description,
-            imageURI: safeImageURI,
-            twitter: params.twitter,
-            telegram: params.telegram,
-            website: params.website,
-          },
-          params.minTokensOut ?? 0n,
+          params.name,
+          params.symbol,
+          safeImageURI,
+          params.description,
+          params.twitter,
+          params.telegram,
+          params.website,
+          BigInt(params.creatorBuyBps),
         ],
         value: totalValue,
-        gas: 2_000_000n,
+        gas: 3_000_000n,
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       setState({ isLoading: false, isPending: false, hash, error: null });
 
-      // Parse the TokenCreated event to get the new token address
       let tokenAddress: string | null = null;
       for (const log of receipt.logs) {
         try {
@@ -110,18 +131,17 @@ export function useCreateTokenAndBuy() {
             break;
           }
         } catch {
-          // Not the event we're looking for
+          // Not our event
         }
       }
 
       return { ...receipt, tokenAddress };
     } catch (err: any) {
       let msg = err?.shortMessage || err?.message || 'Transaction failed';
-      // Make RPC errors more user-friendly
       if (msg.includes('insufficient funds') || msg.includes('exceeds the balance')) {
-        msg = 'Insufficient AVAX balance. You need at least 0.03 AVAX (creation fee + gas).';
-      } else if (err?.name === 'InvalidInputRpcError' || msg.includes('Missing or invalid parameters')) {
-        msg = 'Transaction rejected by network. Please try again.';
+        msg = 'Insufficient AVAX balance. You need at least 0.05 AVAX (creation fee + gas).';
+      } else if (msg.includes('Unauthorized')) {
+        msg = 'Profile creation required. Please try again.';
       }
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
