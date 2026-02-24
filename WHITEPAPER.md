@@ -306,3 +306,5 @@ The result is a launchpad where meme coins can thrive without drowning out real 
 ---
 
 *Built on Avalanche C-Chain · [cre8.bond](https://cre8.bond) · February 2026*
+
+> **Disclaimer:** This whitepaper is a living document. All information — including tokenomics, fee structures, technical architecture, and feature descriptions — is subject to change as Cre8 develops and undergoes testing. Nothing in this document constitutes financial advice.

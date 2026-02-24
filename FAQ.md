@@ -186,3 +186,5 @@ Launch a token on testnet, provide feedback, and follow the project. Early suppo
 ---
 
 *Last updated: February 2026*
+
+> **Note:** Cre8 is under active development. All information in this FAQ is subject to change as the platform evolves and gets tested. Nothing here constitutes financial advice.

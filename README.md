@@ -291,3 +291,7 @@ MIT
 - **Network:** [Avalanche C-Chain](https://www.avax.network/)
 - **DEX:** [TraderJoe](https://traderjoexyz.com/)
 - **Competition:** [Avalanche Build Games 2026](https://build.avax.network/build-games)
+
+---
+
+> **Disclaimer:** Cre8 is under active development. All information in this document — including tokenomics, fee structures, contract addresses, and feature descriptions — is subject to change as the platform evolves and undergoes testing. Nothing here constitutes financial advice.
