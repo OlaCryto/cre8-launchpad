@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { type Address, formatEther, parseEther } from 'viem';
 import { publicClient } from '@/config/client';
-import { CONTRACTS, ACTIVE_NETWORK, TOKEN_CONSTANTS } from '@/config/wagmi';
+import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
 import { LaunchpadFactoryABI, BondingCurveABI, LaunchpadRouterABI, ERC20ABI, TokenMetadataABI, TokensPurchasedEvent, TokensSoldEvent, TransferEvent, SwapExecutedEvent } from '@/config/abis';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
@@ -138,7 +138,7 @@ export function useOnChainTokens() {
             const curveAddress = (launchInfo as any).bondingCurve;
 
             // Read bonding curve data
-            const [currentPrice, reserveBalance] = await Promise.all([
+            const [currentPrice, reserveBalance, graduationProgressBps] = await Promise.all([
               publicClient.readContract({
                 address: curveAddress as Address,
                 abi: BondingCurveABI,
@@ -149,10 +149,14 @@ export function useOnChainTokens() {
                 abi: BondingCurveABI,
                 functionName: 'reserveBalance',
               }),
+              publicClient.readContract({
+                address: curveAddress as Address,
+                abi: BondingCurveABI,
+                functionName: 'getGraduationProgress',
+              }),
             ]);
 
             const reserveAvax = Number(formatEther(reserveBalance as bigint));
-            const graduationTarget = Number(TOKEN_CONSTANTS.GRADUATION_THRESHOLD);
 
             return {
               address: addr,
@@ -162,7 +166,7 @@ export function useOnChainTokens() {
               createdAt: Number((launchInfo as any).createdAt),
               currentPrice: Number(formatEther(currentPrice as bigint)),
               reserveBalance: reserveAvax,
-              graduationProgress: Math.min((reserveAvax / graduationTarget) * 100, 100),
+              graduationProgress: Number(graduationProgressBps as bigint) / 100,
               isGraduated: (launchInfo as any).isGraduated,
               imageURI: (tokenMeta as any)?.imageURI || '',
               description: (tokenMeta as any)?.description || '',
@@ -215,7 +219,7 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
 
         const curveAddress = (launchInfo as any).bondingCurve;
 
-        const [currentPrice, reserveBalance, tokensSold, curveState, tokenMeta] = await Promise.all([
+        const [currentPrice, reserveBalance, tokensSold, curveState, graduationProgressBps, tokenMeta] = await Promise.all([
           publicClient.readContract({
             address: curveAddress as Address,
             abi: BondingCurveABI,
@@ -237,6 +241,11 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
             functionName: 'state',
           }),
           publicClient.readContract({
+            address: curveAddress as Address,
+            abi: BondingCurveABI,
+            functionName: 'getGraduationProgress',
+          }),
+          publicClient.readContract({
             address: tokenAddress as Address,
             abi: TokenMetadataABI,
             functionName: 'metadata',
@@ -246,8 +255,7 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
         if (cancelled) return;
 
         const reserveAvax = Number(formatEther(reserveBalance as bigint));
-        const graduationTarget = Number(TOKEN_CONSTANTS.GRADUATION_THRESHOLD);
-        const progress = Math.min((reserveAvax / graduationTarget) * 100, 100);
+        const progress = Number(graduationProgressBps as bigint) / 100;
 
         setData({
           tokenAddress: tokenAddress!,

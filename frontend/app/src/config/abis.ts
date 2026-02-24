@@ -26,6 +26,7 @@ export const SwapExecutedEvent = {
     { name: 'isBuy', type: 'bool', indexed: false },
     { name: 'amountIn', type: 'uint256', indexed: false },
     { name: 'amountOut', type: 'uint256', indexed: false },
+    { name: 'newPrice', type: 'uint256', indexed: false },
   ],
 } as const;
 
@@ -37,20 +38,14 @@ export const LaunchpadRouterABI = [
     type: 'function',
     stateMutability: 'payable',
     inputs: [
-      {
-        name: 'params',
-        type: 'tuple',
-        components: [
-          { name: 'name', type: 'string' },
-          { name: 'symbol', type: 'string' },
-          { name: 'imageURI', type: 'string' },
-          { name: 'description', type: 'string' },
-          { name: 'twitter', type: 'string' },
-          { name: 'telegram', type: 'string' },
-          { name: 'website', type: 'string' },
-          { name: 'creatorBuyBps', type: 'uint256' },
-        ],
-      },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'imageURI', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'twitter', type: 'string' },
+      { name: 'telegram', type: 'string' },
+      { name: 'website', type: 'string' },
+      { name: 'creatorBuyBps', type: 'uint256' },
     ],
     outputs: [
       { name: 'token', type: 'address' },
@@ -167,6 +162,8 @@ export const LaunchpadFactoryABI = [
           { name: 'creator', type: 'address' },
           { name: 'createdAt', type: 'uint256' },
           { name: 'isGraduated', type: 'bool' },
+          { name: 'isProLaunch', type: 'bool' },
+          { name: 'creatorHandle', type: 'string' },
         ],
       },
     ],
@@ -264,6 +261,20 @@ export const BondingCurveABI = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'getMarketCap',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'getGraduationProgress',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: 'progressBps', type: 'uint256' }],
   },
 ] as const;
 

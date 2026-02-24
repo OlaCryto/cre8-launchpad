@@ -12,11 +12,11 @@ const SNAPSHOT_INTERVAL = parseInt(process.env.SNAPSHOT_INTERVAL_MS || '300000',
 
 const LaunchpadFactoryABI = [
   { inputs: [], name: 'getTokenCount', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [{ type: 'uint256' }], name: 'allTokens', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'index', type: 'uint256' }], name: 'getTokenByIndex', outputs: [{ type: 'address' }], stateMutability: 'view', type: 'function' },
 ] as const;
 
 const BondingCurveABI = [
-  { inputs: [], name: 'currentPrice', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'getCurrentPrice', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
   { inputs: [], name: 'reserveBalance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
 ] as const;
 
@@ -44,7 +44,7 @@ async function snapshotAllTokens() {
         const tokenAddr = await client.readContract({
           address: FACTORY_ADDRESS,
           abi: LaunchpadFactoryABI,
-          functionName: 'allTokens',
+          functionName: 'getTokenByIndex',
           args: [BigInt(i)],
         });
 
@@ -55,7 +55,7 @@ async function snapshotAllTokens() {
         });
 
         const [priceRaw, reserveRaw] = await Promise.all([
-          client.readContract({ address: curveAddr as Address, abi: BondingCurveABI, functionName: 'currentPrice' }),
+          client.readContract({ address: curveAddr as Address, abi: BondingCurveABI, functionName: 'getCurrentPrice' }),
           client.readContract({ address: curveAddr as Address, abi: BondingCurveABI, functionName: 'reserveBalance' }),
         ]);
 
