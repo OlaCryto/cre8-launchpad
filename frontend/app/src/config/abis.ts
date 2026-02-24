@@ -5,13 +5,15 @@
  */
 
 export const TokenCreatedEvent = {
-  name: 'TokenCreated',
+  name: 'TokenLaunched',
   type: 'event',
   inputs: [
     { name: 'token', type: 'address', indexed: true },
+    { name: 'bondingCurve', type: 'address', indexed: true },
     { name: 'creator', type: 'address', indexed: true },
     { name: 'name', type: 'string', indexed: false },
     { name: 'symbol', type: 'string', indexed: false },
+    { name: 'isProLaunch', type: 'bool', indexed: false },
   ],
 } as const;
 

@@ -128,7 +128,7 @@ export function useCreateTokenAndBuy() {
             data: log.data,
             topics: log.topics,
           });
-          if (decoded.eventName === 'TokenCreated') {
+          if (decoded.eventName === 'TokenLaunched') {
             tokenAddress = (decoded.args as any).token;
             break;
           }
