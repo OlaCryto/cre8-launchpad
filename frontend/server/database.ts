@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_FILE = process.env.SQLITE_PATH || join(__dirname, 'cre8.db');
+const DB_FILE = process.env.SQLITE_PATH || join(process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname, 'cre8.db');
 
 const dbDir = dirname(DB_FILE);
 if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
