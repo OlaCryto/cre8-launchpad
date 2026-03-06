@@ -33,9 +33,10 @@ Open, fast, permissionless. For meme coins, community tokens, and quick experime
 ### Forge Mode (Creator Mode)
 Structured, accountable, transparent. For verified builders with real products.
 - Creator verification required — apply, get reviewed, earn a verified badge
-- Whitelist phases for early supporters
-- Presale vault with on-chain fund locking
-- Team token vesting with cliff and schedule
+- **Presale vault** with hard cap and soft cap enforcement, on-chain fund locking
+- **Whitelist phases** for early supporters before public trading
+- **Team token vesting** with cliff period and linear release schedule
+- **Presale announcements** — notify followers when a new presale opens
 - All rules enforced by smart contracts — no trust required
 
 ---
@@ -43,27 +44,28 @@ Structured, accountable, transparent. For verified builders with real products.
 ## Architecture
 
 ```
-User → LaunchpadRouterV2 (entry point)
+User → LaunchpadRouterV2 (entry point for buy/sell/create)
  ├→ LaunchpadFactoryV2 (deploys token + curve via EIP-1167 clones)
  │   ├→ LaunchpadTokenV2 (ERC20, whitelist/blacklist, trading phases)
  │   └→ BondingCurveV2 (linear pricing, buy/sell execution)
  ├→ FeeManager (1% trades: 0.8% platform + 0.2% creator)
  ├→ CreatorRegistry (profiles, verification status)
- ├→ ActivityTracker (live feed, circular buffer)
+ ├→ ActivityTracker (live feed, circular buffer of 1000 events)
  └→ LiquidityManager → TraderJoe Router (graduation)
      └→ LiquidityLocker (1-year LP lock)
 ```
 
 ### Forge Mode Flow
 ```
-Creator verified → LaunchManager creates PresaleVault
-  → Pre-sale opens → Contributors send AVAX to vault
-  → Pre-sale closes → Vault locks
-  → Token deployed → Allocations calculated
-  → LP locked → DEX pool created
-  → Team tokens vested → VestingContract enforces schedule
-  → Contributors claim via Claim Page
-  → Transparency Dashboard goes live
+Creator verified → Dashboard: "Run Presale"
+  → LaunchManager creates PresaleVault (hard cap, soft cap, max/wallet, duration)
+  → Presale opens → Contributors send AVAX to vault
+  → Presale closes (time or hard cap hit)
+  → Dashboard: "Execute Launch" → Token deployed, presale AVAX buys on curve
+  → Contributors claim tokens proportionally
+  → Optional: whitelist phase → public trading
+  → Optional: team tokens vest via VestingContract (cliff + linear release)
+  → Auto-graduation to TraderJoe DEX at market cap threshold
 ```
 
 ---
@@ -99,6 +101,8 @@ Creator verified → LaunchManager creates PresaleVault
 - 1-year liquidity lock on graduation (LP tokens locked)
 - All transactions transparent and on-chain
 - Forge mode: verified creators only, vesting enforced by contract
+- Presale vault: hard cap prevents over-raising, soft cap enables refunds if minimum not met
+- 5% slippage protection on presale-to-curve buy
 
 ### Smart Contract Security
 - OpenZeppelin standards (ReentrancyGuard, Ownable, Pausable)
@@ -106,6 +110,7 @@ Creator verified → LaunchManager creates PresaleVault
 - Custom errors for gas optimization
 - Input validation on all external functions
 - Emergency pause functionality
+- Creator fee withdrawal authorization (only creator can withdraw their fees)
 
 ---
 
@@ -113,7 +118,7 @@ Creator verified → LaunchManager creates PresaleVault
 
 ### Smart Contracts
 - **Solidity 0.8.24** with via-IR optimization
-- **Foundry** (forge, cast, anvil)
+- **Foundry** (forge, cast, anvil) — 94 tests, 1000-run fuzz testing
 - **OpenZeppelin Contracts** (ERC20, access control, security)
 - **EVM Target:** Cancun
 
@@ -126,10 +131,11 @@ Creator verified → LaunchManager creates PresaleVault
 - **GSAP** for animations
 
 ### Backend
-- **Express.js** + TypeScript
-- **SQLite** (better-sqlite3) for persistence
-- **X (Twitter) OAuth** for authentication
-- **Background price indexer** for real-time data
+- **Express.js** + TypeScript (38 API endpoints)
+- **PostgreSQL** for persistence (10 tables)
+- **X (Twitter) OAuth 2.0 PKCE** for authentication
+- **Background price indexer** for historical data
+- **Rate limiting** (global + per-route)
 
 ---
 
@@ -137,17 +143,19 @@ Creator verified → LaunchManager creates PresaleVault
 
 | Contract | Address |
 |----------|---------|
-| LaunchpadRouterV2 | `0x29292B61e820736E5920e8f0cc42C9D3e699f5eA` |
-| LaunchpadFactoryV2 | `0xeD1A3Af4faA086BF4dff4Fa2cd4d49F0138DFad8` |
-| FeeManager | `0xe033C8Bd9488844358f2a2D41267D51FD2a648B3` |
-| LiquidityManager | `0xc52B09eca7cC3828adF692B4cd2f685dFF30e6B0` |
-| LiquidityLocker | `0xFDC16396dcff7960B7ba9F3554a5C28576C2D9a8` |
-| CreatorRegistry | `0x2BE70a5EC63FB415635956519D243c7c85C587E5` |
-| ActivityTracker | `0xaBAeDD8b59Ee92D2d9266F9b07E9c6b92EfC142E` |
-| TokenV2 (impl) | `0x8827948871eC905fA432dE3CAcbD43CAB54E1DaD` |
-| BondingCurveV2 (impl) | `0xF36E5D363E057Ecd11D04D51F0f2955C15A0254b` |
+| LaunchpadRouterV2 | [`0xecE29f311363b3689C838a7e12db20ddc32E9896`](https://testnet.snowtrace.io/address/0xecE29f311363b3689C838a7e12db20ddc32E9896) |
+| LaunchpadFactoryV2 | [`0x0926707Dc7a64d63f37390d7C616352b180E807a`](https://testnet.snowtrace.io/address/0x0926707Dc7a64d63f37390d7C616352b180E807a) |
+| LaunchManager | [`0x85B7572Fd253549dB38A638ddcDae1Cc40E2eF73`](https://testnet.snowtrace.io/address/0x85B7572Fd253549dB38A638ddcDae1Cc40E2eF73) |
+| CreatorRegistry | [`0x699251A1Ee60E4396F9F2a911e4d42E7Eeb1A634`](https://testnet.snowtrace.io/address/0x699251A1Ee60E4396F9F2a911e4d42E7Eeb1A634) |
+| FeeManager | [`0xa7D8Df017E9FbAaaf05Bd96381EB0b746038f9e9`](https://testnet.snowtrace.io/address/0xa7D8Df017E9FbAaaf05Bd96381EB0b746038f9e9) |
+| LiquidityManager | [`0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47`](https://testnet.snowtrace.io/address/0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47) |
+| LiquidityLocker | [`0xa0fC9fFa9595D9976341C9d998819fD33fc351c2`](https://testnet.snowtrace.io/address/0xa0fC9fFa9595D9976341C9d998819fD33fc351c2) |
+| ActivityTracker | [`0x3831ec083AC3Bc9914A00Bc749fF0958d68DDA2B`](https://testnet.snowtrace.io/address/0x3831ec083AC3Bc9914A00Bc749fF0958d68DDA2B) |
+| TokenV2 (impl) | [`0x79a08fD01BaEbA1807f0EEb17Af00e21F66671e8`](https://testnet.snowtrace.io/address/0x79a08fD01BaEbA1807f0EEb17Af00e21F66671e8) |
+| BondingCurveV2 (impl) | [`0x53675d55Be1AFa990C6f43C814c42f2b02CBFdc0`](https://testnet.snowtrace.io/address/0x53675d55Be1AFa990C6f43C814c42f2b02CBFdc0) |
 
 **Deployer:** `0x7Df01967DC22d397b443E1A0e780B10EB440A828`
+**Treasury:** `0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38`
 **DEX Router:** TraderJoe Fuji `0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901`
 
 ---
@@ -156,7 +164,8 @@ Creator verified → LaunchManager creates PresaleVault
 
 ### Prerequisites
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
-- Node.js 18+
+- Node.js 20+
+- PostgreSQL database (or use Supabase)
 
 ### Smart Contracts
 
@@ -167,7 +176,7 @@ forge install
 # Build
 forge build
 
-# Test
+# Test (94 tests)
 forge test -vvv
 
 # Deploy to Fuji
@@ -188,8 +197,29 @@ npm run dev          # http://localhost:5173
 cd frontend/server
 npm install
 cp .env.example .env # Configure credentials
-npx tsx index.ts     # http://localhost:3001
+npm run dev          # http://localhost:3001
 ```
+
+---
+
+## API Endpoints
+
+The backend exposes 38 endpoints across 12 route files:
+
+| Category | Endpoints | Auth |
+|----------|-----------|------|
+| **Auth** | OAuth flow, session, wallet key, dev-login, logout | Public / Session |
+| **Users** | Batch fetch by wallet addresses | Public |
+| **Creators** | Apply, check status, categories | Session |
+| **Admin** | Review applications, stats | Admin key |
+| **Comments** | CRUD + likes on token threads | Session |
+| **Prices** | Latest price, history, snapshots | Public / API key |
+| **Favorites** | Add/remove/list favorite tokens | Session |
+| **Follows** | Follow/unfollow creators | Session |
+| **Notifications** | Inbox CRUD, mark read | Session |
+| **Presales** | Record events, announce to followers | Session |
+| **Images** | Upload/serve token images | Session / Public |
+| **Health** | `GET /health` | Public |
 
 ---
 
@@ -211,25 +241,30 @@ cre8/
 │   │   └── LaunchpadRouterV2.sol # Main entry point
 │   ├── forge/                   # Forge mode (structured launches)
 │   │   ├── LaunchManager.sol    # Launch orchestrator
-│   │   ├── PresaleVault.sol     # Presale fund locking
-│   │   └── VestingContract.sol  # Team token vesting
+│   │   ├── PresaleVault.sol     # Presale fund locking (hard/soft cap)
+│   │   └── VestingContract.sol  # Team token vesting (cliff + linear)
 │   ├── interfaces/              # Contract interfaces
 │   ├── libraries/               # BondingCurveMath, errors
 │   └── security/                # AntiBot, Pausable
-├── test/                        # Foundry tests
+├── test/                        # Foundry tests (94 tests)
+│   ├── LaunchpadV2.t.sol        # Core integration + gas tests
+│   ├── BondingCurve.t.sol       # Curve math + fuzz tests
+│   ├── LaunchpadFactory.t.sol   # Factory deployment tests
+│   └── ForgeMode.t.sol          # Presale, vesting, launch manager tests
 ├── scripts/                     # Deployment scripts
 ├── frontend/
 │   ├── app/                     # React frontend (Vite)
 │   │   └── src/
-│   │       ├── components/      # UI components
-│   │       ├── pages/           # Route pages
-│   │       ├── hooks/           # Contract interaction hooks
-│   │       ├── contexts/        # Auth context
-│   │       └── config/          # ABIs, addresses, chain config
+│   │       ├── components/      # Sidebar, TradingChart, UI
+│   │       ├── pages/           # Home, Create, TokenDetail, Presale, Vesting, Inbox, Dashboard
+│   │       ├── hooks/           # useContracts, useForge, useTransactions
+│   │       ├── contexts/        # AuthContext (Twitter OAuth)
+│   │       └── config/          # ABIs, contract addresses, chain config
 │   └── server/                  # Express.js backend
-│       ├── routes/              # API endpoints
-│       ├── middleware/          # Auth, validation
-│       └── services/            # Price indexer, auth
+│       ├── routes/              # 12 route files (38 endpoints)
+│       ├── middleware/          # Auth, validation, rate limiting
+│       ├── services/            # Price indexer, Twitter OAuth, wallet gen
+│       └── database.ts          # PostgreSQL schema + CRUD functions
 └── foundry.toml                 # Foundry configuration
 ```
 
@@ -243,24 +278,28 @@ PRIVATE_KEY=0x...
 FUJI_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
 AVALANCHE_RPC_URL=https://api.avax.network/ext/bc/C/rpc
 SNOWTRACE_API_KEY=...
+TREASURY_ADDRESS=0x...
+EMERGENCY_MULTISIG=0x...
 ```
 
 ### Backend (frontend/server/.env)
 ```
+DATABASE_URL=postgresql://...        # PostgreSQL connection string
+ENCRYPTION_KEY=...                   # 64-char hex (AES-256 for wallet encryption)
 TWITTER_CLIENT_ID=...
 TWITTER_CLIENT_SECRET=...
 TWITTER_CALLBACK_URL=http://localhost:3001/api/auth/callback
-ENCRYPTION_KEY=...
-SESSION_SECRET=...
-PORT=3001
 FRONTEND_URL=http://localhost:5173
-INDEXER_API_KEY=...
+PORT=3001
 ADMIN_API_KEY=...
+INDEXER_API_KEY=...
+FACTORY_ADDRESS=0x...                # For price indexer
+FUJI_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
 ```
 
 ---
 
-## Roadmap
+## Features Completed
 
 - [x] Core smart contracts (bonding curve, factory, router)
 - [x] Anti-bot protection (cooldown, max tx/wallet, launch protection)
@@ -268,22 +307,39 @@ ADMIN_API_KEY=...
 - [x] Liquidity locking (1-year auto-lock on graduation)
 - [x] Creator profiles & verification system
 - [x] Activity tracking (live feed)
-- [x] Easy & Pro launch modes
+- [x] Trenches Mode (Easy Launch) — permissionless token creation
+- [x] Pro Launch — whitelist/blacklist phases
+- [x] Forge Mode — presale vault with hard cap/soft cap
+- [x] Forge Mode — team token vesting (cliff + linear)
+- [x] Forge Mode — creator dashboard (presale, launch, announce)
+- [x] Notification system — inbox with presale announcements
+- [x] Creator follow system
 - [x] Frontend (React + Tailwind + shadcn/ui)
-- [x] Backend API (Express + SQLite)
-- [x] X (Twitter) OAuth authentication
+- [x] Backend API (Express + PostgreSQL, 38 endpoints)
+- [x] X (Twitter) OAuth 2.0 authentication
 - [x] Comment system (token discussion threads)
-- [x] Fuji testnet deployment
-- [ ] End-to-end integration testing
-- [ ] Forge mode frontend (presale, vesting, claims)
+- [x] Price indexer with historical data
+- [x] Token type labels (Trenches vs Creator Launch)
+- [x] Graduated token detection (TraderJoe + DexScreener redirect)
+- [x] Security audit + fixes (30 vulnerabilities identified, critical/high fixed)
+- [x] Fuji testnet deployment (all 10 contracts)
+- [x] 94 passing tests (including 1000-run fuzz tests)
+
+## Roadmap
+
+- [ ] End-to-end integration testing on Fuji
+- [ ] Community beta testing
+- [ ] Featured Creator Launches homepage section
+- [ ] Explore Creators page
 - [ ] Mainnet deployment
-- [ ] Security audit
+- [ ] Professional security audit
+- [ ] Governance & multisig admin
 
 ---
 
 ## Author
 
-Built by [@NetWhizCrypto](https://x.com/NetWhizCrypto)
+Built by [@NetWhizCrypto](https://x.com/NetWhizCrypto) for [Avalanche BuildGames 2026](https://build.avax.network/build-games)
 
 ## License
 
@@ -295,7 +351,7 @@ MIT
 - **X (Twitter):** [@NetWhizCrypto](https://x.com/NetWhizCrypto)
 - **Network:** [Avalanche C-Chain](https://www.avax.network/)
 - **DEX:** [TraderJoe](https://traderjoexyz.com/)
-- **Competition:** [Avalanche Build Games 2026](https://build.avax.network/build-games)
+- **Competition:** [Avalanche BuildGames 2026](https://build.avax.network/build-games)
 
 ---
 
