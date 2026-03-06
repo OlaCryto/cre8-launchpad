@@ -1,14 +1,10 @@
-/**
- * Price Indexer — periodically reads token prices from on-chain and stores snapshots.
- * Runs as a background task inside the server process.
- */
 import { createPublicClient, http, type Address } from 'viem';
 import { avalancheFuji } from 'viem/chains';
 import { addPriceSnapshot } from '../database.js';
 
 const RPC_URL = process.env.FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
-const FACTORY_ADDRESS = process.env.FACTORY_ADDRESS as Address | undefined;
-const SNAPSHOT_INTERVAL = parseInt(process.env.SNAPSHOT_INTERVAL_MS || '300000', 10); // 5 min default
+const FACTORY_ADDRESS = (process.env.FACTORY_ADDRESS || '0x0926707Dc7a64d63f37390d7C616352b180E807a') as Address;
+const SNAPSHOT_INTERVAL = parseInt(process.env.SNAPSHOT_INTERVAL_MS || '300000', 10);
 
 const LaunchpadFactoryABI = [
   { inputs: [], name: 'getTokenCount', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' },
@@ -63,7 +59,7 @@ async function snapshotAllTokens() {
         const reserve = Number(reserveRaw) / 1e18;
         const marketCap = reserve * 1000;
 
-        addPriceSnapshot((tokenAddr as string).toLowerCase(), price, reserve, marketCap);
+        await addPriceSnapshot((tokenAddr as string).toLowerCase(), price, reserve, marketCap);
       } catch {
         // Individual token failure — skip
       }
@@ -83,7 +79,6 @@ export function startPriceIndexer() {
 
   console.log(`[PriceIndexer] Starting (interval: ${SNAPSHOT_INTERVAL / 1000}s)`);
 
-  // Initial snapshot after 10s delay
   setTimeout(() => {
     snapshotAllTokens();
     setInterval(snapshotAllTokens, SNAPSHOT_INTERVAL);

@@ -251,6 +251,7 @@ contract FeeManager is
      * @return amount Amount withdrawn
      */
     function withdrawCreatorFees(address creator) external nonReentrant returns (uint256 amount) {
+        if (msg.sender != creator) revert LaunchpadErrors.Unauthorized();
         amount = creatorPendingFees[creator];
         if (amount == 0) revert LaunchpadErrors.NoFeesToWithdraw();
 

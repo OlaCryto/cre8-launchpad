@@ -52,13 +52,11 @@ export function CreateTokenPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = async () => {
+  const handleEasySubmit = async () => {
     if (!formData.name.trim()) { toast.error('Coin name is required'); return; }
     if (!formData.ticker.trim()) { toast.error('Ticker is required'); return; }
 
     try {
-      // Convert initialBuy AVAX slider to basis points (0-2000 = 0-20% of supply)
-      // The slider value is in AVAX; map it to a rough BPS percentage
       const maxBuyPercent = 20;
       const buyPercent = maxBuy > 0 ? Math.min((initialBuy / maxBuy) * maxBuyPercent, maxBuyPercent) : 0;
       const creatorBuyBps = Math.round(buyPercent * 100);
@@ -72,6 +70,7 @@ export function CreateTokenPage() {
         telegram: formData.telegram,
         website: formData.website,
         creatorBuyBps,
+        creatorBuyAvax: initialBuy,
       });
 
       if (receipt.tokenAddress && imagePreview?.startsWith('data:')) {
@@ -85,6 +84,8 @@ export function CreateTokenPage() {
     }
   };
 
+  const handleSubmit = handleEasySubmit;
+
   return (
     <div className="min-h-screen pb-20">
       <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-6">
@@ -93,7 +94,10 @@ export function CreateTokenPage() {
           <Link to="/" className="text-dim hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-xl font-bold text-white">Create new coin</h1>
+          <div>
+            <h1 className="text-xl font-bold text-white">Create new coin</h1>
+            <p className="text-xs text-dim mt-0.5">Instant launch on the bonding curve</p>
+          </div>
         </div>
 
         {/* Two-column layout */}
@@ -256,7 +260,8 @@ export function CreateTokenPage() {
                 className="w-full bg-cre8-red hover:bg-cre8-red/90 text-white font-bold rounded-xl py-5 text-base disabled:opacity-40">
                 {txLoading ? (
                   <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />{isPending ? 'Confirming...' : 'Creating...'}</>
-                ) : initialBuy > 0 ? 'Create and Buy' : 'Create coin'}
+                ) : (initialBuy > 0 ? 'Create and Buy' : 'Create coin')
+                }
               </Button>
             ) : (
               <Button onClick={signInWithX} disabled={authLoading}
@@ -278,7 +283,6 @@ export function CreateTokenPage() {
             <div className="sticky top-6">
               <h2 className="text-base font-bold text-white mb-3">Preview</h2>
               <div className="surface overflow-hidden">
-                {/* Preview card — mimics the token card in the grid */}
                 <div className="aspect-[4/3] bg-gradient-to-br from-white/[0.02] to-transparent relative overflow-hidden flex items-center justify-center">
                   {imagePreview ? (
                     <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />

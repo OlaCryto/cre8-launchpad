@@ -1,4 +1,4 @@
-// Contract addresses — deployed to Fuji testnet (2026-02-24)
+// Contract addresses — deployed to Fuji testnet (2026-03-06)
 export const CONTRACTS = {
   avalanche: {
     LaunchpadRouter: '0x...',
@@ -13,15 +13,16 @@ export const CONTRACTS = {
     BondingCurveImplementation: '0x...',
   },
   fuji: {
-    LaunchpadRouter: '0x29292B61e820736E5920e8f0cc42C9D3e699f5eA',
-    LaunchpadFactory: '0xeD1A3Af4faA086BF4dff4Fa2cd4d49F0138DFad8',
-    CreatorRegistry: '0x2BE70a5EC63FB415635956519D243c7c85C587E5',
-    FeeManager: '0xe033C8Bd9488844358f2a2D41267D51FD2a648B3',
-    LiquidityManager: '0xc52B09eca7cC3828adF692B4cd2f685dFF30e6B0',
-    LiquidityLocker: '0xFDC16396dcff7960B7ba9F3554a5C28576C2D9a8',
-    ActivityTracker: '0xaBAeDD8b59Ee92D2d9266F9b07E9c6b92EfC142E',
-    TokenImplementation: '0x8827948871eC905fA432dE3CAcbD43CAB54E1DaD',
-    BondingCurveImplementation: '0xF36E5D363E057Ecd11D04D51F0f2955C15A0254b',
+    LaunchpadRouter: '0xecE29f311363b3689C838a7e12db20ddc32E9896',
+    LaunchManager: '0x85B7572Fd253549dB38A638ddcDae1Cc40E2eF73',
+    LaunchpadFactory: '0x0926707Dc7a64d63f37390d7C616352b180E807a',
+    CreatorRegistry: '0x699251A1Ee60E4396F9F2a911e4d42E7Eeb1A634',
+    FeeManager: '0xa7D8Df017E9FbAaaf05Bd96381EB0b746038f9e9',
+    LiquidityManager: '0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47',
+    LiquidityLocker: '0xa0fC9fFa9595D9976341C9d998819fD33fc351c2',
+    ActivityTracker: '0x3831ec083AC3Bc9914A00Bc749fF0958d68DDA2B',
+    TokenImplementation: '0x79a08fD01BaEbA1807f0EEb17Af00e21F66671e8',
+    BondingCurveImplementation: '0x53675d55Be1AFa990C6f43C814c42f2b02CBFdc0',
   },
 } as const;
 

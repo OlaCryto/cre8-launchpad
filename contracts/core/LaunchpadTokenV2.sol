@@ -270,6 +270,9 @@ contract LaunchpadTokenV2 is
      * @param account Address to check
      */
     function canTrade(address account) public view returns (bool) {
+        // After graduation, all restrictions are lifted — token trades freely on DEX
+        if (isGraduated) return true;
+
         // Bonding curve and factory can always interact
         if (account == bondingCurve || account == factory) {
             return true;
@@ -302,7 +305,7 @@ contract LaunchpadTokenV2 is
      * @notice Add address to whitelist
      * @param account Address to whitelist
      */
-    function addToWhitelist(address account) external onlyCreator {
+    function addToWhitelist(address account) external onlyCreator notGraduated {
         if (launchMode != LaunchMode.Pro) revert LaunchpadErrors.InvalidInput();
         if (account == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (whitelist[account]) return;
@@ -317,7 +320,7 @@ contract LaunchpadTokenV2 is
      * @notice Add multiple addresses to whitelist
      * @param accounts Addresses to whitelist
      */
-    function addToWhitelistBatch(address[] calldata accounts) external onlyCreator {
+    function addToWhitelistBatch(address[] calldata accounts) external onlyCreator notGraduated {
         if (launchMode != LaunchMode.Pro) revert LaunchpadErrors.InvalidInput();
         if (accounts.length > 100) revert LaunchpadErrors.InvalidInput();
 
@@ -352,7 +355,7 @@ contract LaunchpadTokenV2 is
      * @notice Add address to blacklist
      * @param account Address to blacklist
      */
-    function addToBlacklist(address account) external onlyCreator {
+    function addToBlacklist(address account) external onlyCreator notGraduated {
         if (launchMode != LaunchMode.Pro) revert LaunchpadErrors.InvalidInput();
         if (account == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (account == creator) revert LaunchpadErrors.InvalidInput(); // Can't blacklist creator
@@ -367,7 +370,7 @@ contract LaunchpadTokenV2 is
      * @notice Add multiple addresses to blacklist
      * @param accounts Addresses to blacklist
      */
-    function addToBlacklistBatch(address[] calldata accounts) external onlyCreator {
+    function addToBlacklistBatch(address[] calldata accounts) external onlyCreator notGraduated {
         if (launchMode != LaunchMode.Pro) revert LaunchpadErrors.InvalidInput();
 
         for (uint256 i = 0; i < accounts.length; i++) {
@@ -475,8 +478,12 @@ contract LaunchpadTokenV2 is
         isGraduated = true;
         graduatedAt = block.timestamp;
 
-        // After graduation, trading is fully public
-        // (whitelist/blacklist still applies until creator disables)
+        // Disable all trading restrictions on graduation so the token trades freely on DEX
+        if (launchMode == LaunchMode.Pro) {
+            proConfig.whitelistEnabled = false;
+            proConfig.blacklistEnabled = false;
+            proConfig.publicStartTime = block.timestamp;
+        }
 
         // Transfer liquidity reserve to factory for DEX pairing
         _transfer(address(this), factory, LIQUIDITY_SUPPLY);

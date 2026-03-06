@@ -5,10 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 
 import {LaunchpadToken} from "../contracts/core/LaunchpadToken.sol";
+import {LaunchpadTokenV2} from "../contracts/core/LaunchpadTokenV2.sol";
 import {BondingCurve} from "../contracts/core/BondingCurve.sol";
+import {BondingCurveV2} from "../contracts/core/BondingCurveV2.sol";
 import {LaunchpadFactory} from "../contracts/core/LaunchpadFactory.sol";
+import {LaunchpadFactoryV2} from "../contracts/core/LaunchpadFactoryV2.sol";
 import {FeeManager} from "../contracts/core/FeeManager.sol";
 import {CreatorRegistry} from "../contracts/core/CreatorRegistry.sol";
+import {ActivityTracker} from "../contracts/core/ActivityTracker.sol";
 import {LiquidityLocker} from "../contracts/core/LiquidityLocker.sol";
 import {LiquidityManager} from "../contracts/core/LiquidityManager.sol";
 import {PresaleVault} from "../contracts/forge/PresaleVault.sol";
@@ -28,6 +32,8 @@ contract PresaleVaultTest is Test {
 
     uint256 constant MAX_PER_WALLET = 2 ether;
     uint256 constant DURATION = 2 days;
+    uint256 constant HARD_CAP = 10 ether;
+    uint256 constant SOFT_CAP = 2 ether;
 
     function setUp() public {
         creator = makeAddr("creator");
@@ -41,7 +47,7 @@ contract PresaleVaultTest is Test {
         vm.deal(contributor3, 10 ether);
 
         vm.prank(launchMgr);
-        vault = new PresaleVault(creator, MAX_PER_WALLET, DURATION, launchMgr);
+        vault = new PresaleVault(creator, MAX_PER_WALLET, DURATION, launchMgr, HARD_CAP, SOFT_CAP);
     }
 
     function test_InitialState() public view {
@@ -50,11 +56,16 @@ contract PresaleVaultTest is Test {
         assertEq(vault.totalContributors(), 0);
         assertEq(vault.launchManager(), launchMgr);
 
-        (uint256 maxPerWallet, uint256 duration,, uint256 endTime, address vaultCreator) = vault.config();
+        (
+            uint256 maxPerWallet, uint256 duration,, uint256 endTime,
+            address vaultCreator, uint256 hardCap, uint256 softCap
+        ) = vault.config();
         assertEq(maxPerWallet, MAX_PER_WALLET);
         assertEq(duration, DURATION);
         assertEq(vaultCreator, creator);
         assertGt(endTime, block.timestamp);
+        assertEq(hardCap, HARD_CAP);
+        assertEq(softCap, SOFT_CAP);
     }
 
     function test_Contribute() public {
@@ -126,9 +137,9 @@ contract PresaleVaultTest is Test {
     }
 
     function test_CloseAfterTimeExpires() public {
-        // Contribute first
+        // Contribute enough to meet soft cap
         vm.prank(contributor1);
-        vault.contribute{value: 1 ether}();
+        vault.contribute{value: 2 ether}();
 
         // Warp past end
         vm.warp(block.timestamp + DURATION + 1);
@@ -139,8 +150,9 @@ contract PresaleVaultTest is Test {
     }
 
     function test_CreatorCloseEarly() public {
+        // Contribute enough to meet soft cap (2 ether)
         vm.prank(contributor1);
-        vault.contribute{value: 1 ether}();
+        vault.contribute{value: 2 ether}();
 
         vm.prank(creator);
         vault.close();
@@ -148,6 +160,10 @@ contract PresaleVaultTest is Test {
     }
 
     function test_ManagerCloseEarly() public {
+        // Contribute enough to meet soft cap
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+
         vm.prank(launchMgr);
         vault.close();
         assertEq(uint256(vault.state()), uint256(PresaleVault.VaultState.Closed));
@@ -160,10 +176,14 @@ contract PresaleVaultTest is Test {
     }
 
     function test_RevertContributeAfterClose() public {
+        // Contribute enough to meet soft cap before closing
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+
         vm.prank(creator);
         vault.close();
 
-        vm.prank(contributor1);
+        vm.prank(contributor2);
         vm.expectRevert(abi.encodeWithSignature("InvalidInput()"));
         vault.contribute{value: 1 ether}();
     }
@@ -285,9 +305,125 @@ contract PresaleVaultTest is Test {
         assertEq(token.balanceOf(contributor2), info2.tokenAllocation);
     }
 
-    function test_RevertDoubleClaim() public {
+    // --- Hard Cap / Soft Cap Tests ---
+
+    function test_HardCapEnforcement() public {
+        // Hard cap is 10 ether, max per wallet is 2 ether
+        // 5 contributors at 2 ether each = 10 ether = hard cap
+        address contributor4 = makeAddr("contributor4");
+        address contributor5 = makeAddr("contributor5");
+        vm.deal(contributor4, 10 ether);
+        vm.deal(contributor5, 10 ether);
+
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor2);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor3);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor4);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor5);
+        vault.contribute{value: 2 ether}();
+
+        // Vault should auto-close at hard cap
+        assertEq(uint256(vault.state()), uint256(PresaleVault.VaultState.Closed));
+        assertEq(vault.totalRaised(), 10 ether);
+    }
+
+    function test_HardCapExceeded() public {
+        // Fill up to 9 ether (4 contributors * 2 ether + 1 ether)
+        address contributor4 = makeAddr("contributor4");
+        vm.deal(contributor4, 10 ether);
+
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor2);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor3);
+        vault.contribute{value: 2 ether}();
+        vm.prank(contributor4);
+        vault.contribute{value: 2 ether}();
+
+        // totalRaised = 8 ether, hard cap = 10 ether
+        // Try to contribute 2 ether from contributor1 — but they already have 2 ether (max per wallet)
+        // Instead try from a new contributor
+        address contributor5 = makeAddr("contributor5");
+        vm.deal(contributor5, 10 ether);
+
+        // This should revert: 8 + 2 ether > 10 is fine (equals 10), but 8 + 2 = 10 is exactly hardCap
+        // Let's try exceeding: contribute 1 ether first, then try 2 more
+        vm.prank(contributor5);
+        vault.contribute{value: 1 ether}(); // totalRaised = 9 ether
+
+        address contributor6 = makeAddr("contributor6");
+        vm.deal(contributor6, 10 ether);
+
+        // 9 + 2 = 11 > 10 hard cap — should revert
+        vm.prank(contributor6);
+        vm.expectRevert(abi.encodeWithSignature("MaxSupplyReached()"));
+        vault.contribute{value: 2 ether}();
+    }
+
+    function test_SoftCapNotMet() public {
+        // Contribute 1 ether (below soft cap of 2 ether)
         vm.prank(contributor1);
         vault.contribute{value: 1 ether}();
+
+        // Warp past end
+        vm.warp(block.timestamp + DURATION + 1);
+
+        // Close — should auto-cancel since totalRaised (1) < softCap (2)
+        vault.close();
+        assertEq(uint256(vault.state()), uint256(PresaleVault.VaultState.Cancelled));
+
+        // Contributors can refund
+        uint256 balBefore = contributor1.balance;
+        vm.prank(contributor1);
+        vault.refund();
+        assertEq(contributor1.balance, balBefore + 1 ether);
+    }
+
+    function test_SoftCapMet() public {
+        // Contribute exactly soft cap
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+
+        // Close — should succeed since totalRaised (2) >= softCap (2)
+        vm.prank(creator);
+        vault.close();
+        assertEq(uint256(vault.state()), uint256(PresaleVault.VaultState.Closed));
+    }
+
+    function test_NoSoftCap() public {
+        // Create a vault with no soft cap
+        PresaleVault noSoftCapVault;
+        vm.prank(launchMgr);
+        noSoftCapVault = new PresaleVault(creator, MAX_PER_WALLET, DURATION, launchMgr, HARD_CAP, 0);
+
+        // Contribute just a tiny amount
+        vm.prank(contributor1);
+        noSoftCapVault.contribute{value: 0.01 ether}();
+
+        // Close — should succeed (no soft cap means any amount is fine)
+        vm.prank(creator);
+        noSoftCapVault.close();
+        assertEq(uint256(noSoftCapVault.state()), uint256(PresaleVault.VaultState.Closed));
+    }
+
+    function test_RemainingHardCap() public {
+        assertEq(vault.remainingHardCap(), HARD_CAP);
+
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
+
+        assertEq(vault.remainingHardCap(), HARD_CAP - 2 ether);
+    }
+
+    function test_RevertDoubleClaim() public {
+        // Contribute enough to meet soft cap
+        vm.prank(contributor1);
+        vault.contribute{value: 2 ether}();
 
         vm.prank(creator);
         vault.close();
@@ -513,12 +649,13 @@ contract VestingContractTest is Test {
 
 contract LaunchManagerTest is Test {
     LaunchManager public manager;
-    LaunchpadFactory public factory;
+    LaunchpadFactoryV2 public factory;
     CreatorRegistry public registry;
+    ActivityTracker public activityTracker;
     FeeManager public feeManager;
 
-    LaunchpadToken public tokenImpl;
-    BondingCurve public curveImpl;
+    LaunchpadTokenV2 public tokenImpl;
+    BondingCurveV2 public curveImpl;
 
     address public owner;
     address public creator;
@@ -539,14 +676,20 @@ contract LaunchManagerTest is Test {
         vm.deal(contributor1, 100 ether);
         vm.deal(contributor2, 100 ether);
 
-        // Deploy implementations
-        tokenImpl = new LaunchpadToken();
-        curveImpl = new BondingCurve();
+        // Deploy V2 implementations
+        tokenImpl = new LaunchpadTokenV2();
+        curveImpl = new BondingCurveV2();
 
         // Deploy core contracts
-        factory = new LaunchpadFactory(address(tokenImpl), address(curveImpl));
-        feeManager = new FeeManager(treasury);
         registry = new CreatorRegistry();
+        activityTracker = new ActivityTracker();
+        factory = new LaunchpadFactoryV2(
+            address(tokenImpl),
+            address(curveImpl),
+            address(registry),
+            address(activityTracker)
+        );
+        feeManager = new FeeManager(treasury);
 
         // Deploy LaunchManager
         manager = new LaunchManager(address(factory), address(registry));
@@ -554,13 +697,17 @@ contract LaunchManagerTest is Test {
         // Configure factory
         factory.setFeeManager(address(feeManager));
         factory.setRouter(address(manager)); // LaunchManager acts as router for factory
+        factory.setLaunchManager(address(manager)); // Authorize LaunchManager
 
         // Configure fee manager
         feeManager.setFactory(address(factory));
         feeManager.setRouter(address(manager));
 
-        // Configure creator registry
-        registry.setFactory(address(manager));
+        // Configure creator registry — factory is authorized caller
+        registry.setFactory(address(factory));
+
+        // Configure activity tracker
+        activityTracker.setAuthorizedTracker(address(factory), true);
 
         // Register creator profile
         vm.prank(creator);
@@ -583,6 +730,8 @@ contract LaunchManagerTest is Test {
             vestingEnabled: false,
             presaleMaxPerWallet: 0,
             presaleDuration: 0,
+            presaleHardCap: 0,
+            presaleSoftCap: 0,
             whitelist: whitelist,
             whitelistDuration: 0,
             vestingTeamBps: 0,
@@ -607,6 +756,8 @@ contract LaunchManagerTest is Test {
             vestingEnabled: false,
             presaleMaxPerWallet: 2 ether,
             presaleDuration: 2 days,
+            presaleHardCap: 10 ether,
+            presaleSoftCap: 2 ether,
             whitelist: whitelist,
             whitelistDuration: 0,
             vestingTeamBps: 0,
@@ -633,6 +784,8 @@ contract LaunchManagerTest is Test {
             vestingEnabled: false,
             presaleMaxPerWallet: 0,
             presaleDuration: 0,
+            presaleHardCap: 0,
+            presaleSoftCap: 0,
             whitelist: whitelist,
             whitelistDuration: 10 minutes,
             vestingTeamBps: 0,
@@ -854,6 +1007,8 @@ contract LaunchManagerTest is Test {
             presaleEnabled: true, whitelistEnabled: false, vestingEnabled: false,
             presaleMaxPerWallet: 1 ether,
             presaleDuration: 1 minutes, // Too short — min is 1 hour
+            presaleHardCap: 10 ether,
+            presaleSoftCap: 0,
             whitelist: whitelist, whitelistDuration: 0,
             vestingTeamBps: 0, vestingCliff: 0, vestingDuration: 0
         });
@@ -870,6 +1025,7 @@ contract LaunchManagerTest is Test {
             description: "", imageURI: "", twitter: "", telegram: "", website: "",
             presaleEnabled: false, whitelistEnabled: false, vestingEnabled: true,
             presaleMaxPerWallet: 0, presaleDuration: 0,
+            presaleHardCap: 0, presaleSoftCap: 0,
             whitelist: whitelist, whitelistDuration: 0,
             vestingTeamBps: 3000, // 30% — exceeds 20% max
             vestingCliff: 30 days, vestingDuration: 180 days

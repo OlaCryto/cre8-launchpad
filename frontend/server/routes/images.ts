@@ -12,7 +12,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
-import { validateTokenAddress, isValidAddress } from '../middleware/validation.js';
+import { validateTokenAddress, isValidAddress, param } from '../middleware/validation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = process.env.UPLOADS_DIR || join(__dirname, '..', 'uploads');
@@ -34,7 +34,7 @@ const uploadLimiter = rateLimit({
 // ---- Upload (auth required) ----
 
 router.post('/:tokenAddress', uploadLimiter, validateTokenAddress, requireAuth, (req: AuthenticatedRequest, res: Response) => {
-  const { tokenAddress } = req.params;
+  const tokenAddress = param(req, 'tokenAddress');
 
   // Validate body
   const { image } = req.body;
@@ -82,8 +82,8 @@ router.post('/:tokenAddress', uploadLimiter, validateTokenAddress, requireAuth, 
 
 // ---- Serve (public) ----
 
-router.get('/:tokenAddress', (req: Request, res: Response) => {
-  const { tokenAddress } = req.params;
+router.get('/:tokenAddress', (req, res) => {
+  const tokenAddress = param(req, 'tokenAddress');
   if (!isValidAddress(tokenAddress)) {
     res.status(400).json({ error: 'Invalid token address' });
     return;

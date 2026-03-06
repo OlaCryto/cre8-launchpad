@@ -41,6 +41,8 @@ contract PresaleVault is ReentrancyGuard {
         uint256 startTime;          // When presale opens
         uint256 endTime;            // When presale closes
         address creator;            // Creator who set up this presale
+        uint256 hardCap;            // Maximum total AVAX to raise (required, > 0)
+        uint256 softCap;            // Minimum for success (0 = no soft cap)
     }
 
     struct ContributorInfo {
@@ -101,19 +103,25 @@ contract PresaleVault is ReentrancyGuard {
         address creator_,
         uint256 maxPerWallet_,
         uint256 duration_,
-        address launchManager_
+        address launchManager_,
+        uint256 hardCap_,
+        uint256 softCap_
     ) {
         if (creator_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (launchManager_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (maxPerWallet_ == 0) revert LaunchpadErrors.ZeroAmount();
         if (duration_ == 0) revert LaunchpadErrors.InvalidInput();
+        if (hardCap_ == 0) revert LaunchpadErrors.ZeroAmount();
+        if (softCap_ > hardCap_) revert LaunchpadErrors.InvalidInput();
 
         config = PresaleConfig({
             maxPerWallet: maxPerWallet_,
             duration: duration_,
             startTime: block.timestamp,
             endTime: block.timestamp + duration_,
-            creator: creator_
+            creator: creator_,
+            hardCap: hardCap_,
+            softCap: softCap_
         });
 
         launchManager = launchManager_;
@@ -142,6 +150,9 @@ contract PresaleVault is ReentrancyGuard {
 
         if (newTotal > config.maxPerWallet) revert LaunchpadErrors.MaxTransactionExceeded();
 
+        // Hard cap enforcement
+        if (totalRaised + msg.value > config.hardCap) revert LaunchpadErrors.MaxSupplyReached();
+
         // Track new contributor
         if (info.contributed == 0) {
             contributorList.push(msg.sender);
@@ -150,6 +161,12 @@ contract PresaleVault is ReentrancyGuard {
 
         info.contributed = newTotal;
         totalRaised += msg.value;
+
+        // Auto-close if hard cap reached
+        if (totalRaised >= config.hardCap) {
+            state = VaultState.Closed;
+            emit PresaleClosed(totalRaised, totalContributors);
+        }
 
         emit Contributed(msg.sender, msg.value, totalRaised);
     }
@@ -164,14 +181,20 @@ contract PresaleVault is ReentrancyGuard {
 
         if (block.timestamp >= config.endTime) {
             // Anyone can close after time expires
-            state = VaultState.Closed;
         } else if (msg.sender == config.creator || msg.sender == launchManager) {
             // Creator or manager can close early
-            state = VaultState.Closed;
         } else {
             revert LaunchpadErrors.Unauthorized();
         }
 
+        // If soft cap exists and not met, auto-cancel instead of closing
+        if (config.softCap > 0 && totalRaised < config.softCap) {
+            state = VaultState.Cancelled;
+            emit PresaleCancelled(config.creator);
+            return;
+        }
+
+        state = VaultState.Closed;
         emit PresaleClosed(totalRaised, totalContributors);
     }
 
@@ -336,6 +359,14 @@ contract PresaleVault is ReentrancyGuard {
      */
     function isExpired() external view returns (bool) {
         return block.timestamp >= config.endTime;
+    }
+
+    /**
+     * @notice Remaining AVAX until hard cap is reached
+     */
+    function remainingHardCap() external view returns (uint256) {
+        if (totalRaised >= config.hardCap) return 0;
+        return config.hardCap - totalRaised;
     }
 
     // ============ Receive ============

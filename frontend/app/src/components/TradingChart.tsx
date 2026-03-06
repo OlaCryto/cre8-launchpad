@@ -67,7 +67,7 @@ function buildCandles(
   const now = Math.floor(Date.now() / 1000);
   const cutoff = lb === Infinity ? 0 : now - lb;
 
-  const validTrades = trades.filter((t) => t.newPrice > 0);
+  const validTrades = trades.filter((t) => t.newPrice != null && t.newPrice > 0);
 
   // Filter trades within the lookback window; fall back to all valid trades
   // so the chart always renders something when data exists
@@ -84,20 +84,21 @@ function buildCandles(
   const candles = new Map<number, CandleData>();
 
   for (const trade of filtered) {
+    const price = trade.newPrice!;
     const bucketTime = Math.floor(trade.timestamp / bucket) * bucket;
     const existing = candles.get(bucketTime);
 
     if (existing) {
-      existing.high = Math.max(existing.high, trade.newPrice);
-      existing.low = Math.min(existing.low, trade.newPrice);
-      existing.close = trade.newPrice;
+      existing.high = Math.max(existing.high, price);
+      existing.low = Math.min(existing.low, price);
+      existing.close = price;
     } else {
       candles.set(bucketTime, {
         time: bucketTime as UTCTimestamp,
-        open: trade.newPrice,
-        high: trade.newPrice,
-        low: trade.newPrice,
-        close: trade.newPrice,
+        open: price,
+        high: price,
+        low: price,
+        close: price,
       });
     }
   }

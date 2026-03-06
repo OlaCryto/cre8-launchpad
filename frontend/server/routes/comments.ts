@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { addComment, getComments, getReplies, toggleLike, getComment, isLikedByUser } from '../database.js';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
-import { validateTokenAddress, validateIntId, sanitizeText } from '../middleware/validation.js';
+import { validateTokenAddress, validateIntId, sanitizeText, param } from '../middleware/validation.js';
 
 const router = Router();
 
@@ -12,29 +12,31 @@ const commentWriteLimiter = rateLimit({
   message: { error: 'Commenting too fast, please slow down' },
 });
 
-// GET /api/comments/:tokenAddress — list comments for a token
-router.get('/:tokenAddress', validateTokenAddress, optionalAuth, (req: AuthenticatedRequest, res: Response) => {
-  const { tokenAddress } = req.params;
+router.get('/:tokenAddress', validateTokenAddress, optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const tokenAddress = param(req, 'tokenAddress');
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-  const { comments, total } = getComments(tokenAddress, limit, offset);
+  const { comments, total } = await getComments(tokenAddress, limit, offset);
   const userAddr = req.sessionUser?.wallet_address;
 
-  const enriched = comments.map((c: any) => ({
-    ...c,
-    liked: userAddr ? isLikedByUser(c.id, userAddr) : false,
-    replies: getReplies(c.id).map((r: any) => ({
+  const enriched = await Promise.all(comments.map(async (c: any) => {
+    const replies = await getReplies(c.id);
+    const enrichedReplies = await Promise.all(replies.map(async (r: any) => ({
       ...r,
-      liked: userAddr ? isLikedByUser(r.id, userAddr) : false,
-    })),
+      liked: userAddr ? await isLikedByUser(r.id, userAddr) : false,
+    })));
+    return {
+      ...c,
+      liked: userAddr ? await isLikedByUser(c.id, userAddr) : false,
+      replies: enrichedReplies,
+    };
   }));
 
   res.json({ comments: enriched, total, limit, offset });
 });
 
-// POST /api/comments — create a comment
-router.post('/', commentWriteLimiter, requireAuth, (req: AuthenticatedRequest, res: Response) => {
+router.post('/', commentWriteLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.sessionUser!;
   const { token_address, content, parent_id } = req.body;
 
@@ -60,14 +62,14 @@ router.post('/', commentWriteLimiter, requireAuth, (req: AuthenticatedRequest, r
       res.status(400).json({ error: 'Invalid parent_id' });
       return;
     }
-    const parent = getComment(pid);
+    const parent = await getComment(pid);
     if (!parent) {
       res.status(404).json({ error: 'Parent comment not found' });
       return;
     }
   }
 
-  const result = addComment({
+  const result = await addComment({
     token_address,
     author_address: user.wallet_address,
     author_name: user.twitter_name,
@@ -90,18 +92,17 @@ router.post('/', commentWriteLimiter, requireAuth, (req: AuthenticatedRequest, r
   });
 });
 
-// POST /api/comments/:id/like — toggle like on a comment
-router.post('/:id/like', validateIntId, requireAuth, (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/like', validateIntId, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.sessionUser!;
-  const commentId = parseInt(req.params.id);
+  const commentId = parseInt(param(req, 'id'));
 
-  const comment = getComment(commentId);
+  const comment = await getComment(commentId);
   if (!comment) {
     res.status(404).json({ error: 'Comment not found' });
     return;
   }
 
-  const liked = toggleLike(commentId, user.wallet_address);
+  const liked = await toggleLike(commentId, user.wallet_address);
   res.json({ liked });
 });
 

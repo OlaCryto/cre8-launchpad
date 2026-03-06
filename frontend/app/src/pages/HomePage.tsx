@@ -17,12 +17,10 @@ import {
   IconLayoutList,
   IconX,
   IconSettings,
-  IconCircleDot,
   IconSortDescending,
-  IconMessageCircle,
   IconArrowsSort,
 } from '@tabler/icons-react';
-import { useOnChainTokens, useGlobalTradeActivity, type OnChainToken, type TradeActivity } from '@/hooks/useContracts';
+import { useOnChainTokens, useGlobalTradeActivity, type OnChainToken, type GlobalTrade } from '@/hooks/useContracts';
 import { formatPrice } from '@/utils/format';
 
 type FilterTab = 'trending' | 'new' | 'graduating' | 'top' | 'oldest' | 'last_trade';
@@ -199,7 +197,7 @@ interface TokenStats {
   lastTradeTs: number;
 }
 
-function useTokenStats(tokens: OnChainToken[], trades: TradeActivity[]): Record<string, TokenStats> {
+function useTokenStats(tokens: OnChainToken[], trades: GlobalTrade[]): Record<string, TokenStats> {
   return useMemo(() => {
     const now = Math.floor(Date.now() / 1000);
     const cutoff24h = now - 86400;
@@ -224,7 +222,7 @@ function useTokenStats(tokens: OnChainToken[], trades: TradeActivity[]): Record<
       if (!traderSets[addr]) traderSets[addr] = new Set();
       traderSets[addr].add(trade.trader);
       if (!priceBuckets[addr]) priceBuckets[addr] = [];
-      priceBuckets[addr].push(trade.newPrice);
+      if (trade.newPrice != null) priceBuckets[addr].push(trade.newPrice);
     }
 
     for (const addr of Object.keys(stats)) {
@@ -250,6 +248,24 @@ export function HomePage() {
   const [reserveFilter, setReserveFilter] = useState<RangeFilter>({ min: 0, max: RESERVE_MAX });
   const [appliedMcap, setAppliedMcap] = useState<RangeFilter>({ min: 0, max: MCAP_MAX });
   const [appliedReserve, setAppliedReserve] = useState<RangeFilter>({ min: 0, max: RESERVE_MAX });
+
+  const [showDescriptions, setShowDescriptions] = useState(() => {
+    try { return localStorage.getItem('cre8_showDesc') !== 'false'; } catch { return true; }
+  });
+  const [animateTicker, setAnimateTicker] = useState(() => {
+    try { return localStorage.getItem('cre8_animTicker') !== 'false'; } catch { return true; }
+  });
+  const [compactMode, setCompactMode] = useState(() => {
+    try { return localStorage.getItem('cre8_compact') === 'true'; } catch { return false; }
+  });
+
+  const toggleSetting = (key: string, setter: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setter(prev => {
+      const next = !prev;
+      try { localStorage.setItem(key, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const tokenStats = useTokenStats(tokens, globalTrades);
   const hasActiveFilters = appliedMcap.min > 0 || appliedMcap.max < MCAP_MAX || appliedReserve.min > 0 || appliedReserve.max < RESERVE_MAX;
@@ -290,7 +306,15 @@ export function HomePage() {
       const bTs = tokenStats[b.address]?.lastTradeTs || 0;
       return bTs - aTs;
     }
-    return b.reserveBalance - a.reserveBalance;
+    // 'trending' — composite score: 24h volume + recency of trades + tx count
+    const aS = tokenStats[a.address];
+    const bS = tokenStats[b.address];
+    const now = Math.floor(Date.now() / 1000);
+    const recencyA = aS?.lastTradeTs ? 1 / (1 + (now - aS.lastTradeTs) / 3600) : 0;
+    const recencyB = bS?.lastTradeTs ? 1 / (1 + (now - bS.lastTradeTs) / 3600) : 0;
+    const scoreA = (aS?.vol24h || 0) + (aS?.txns || 0) * 50 + recencyA * 5000;
+    const scoreB = (bS?.vol24h || 0) + (bS?.txns || 0) * 50 + recencyB * 5000;
+    return scoreB - scoreA;
   });
 
   const kingToken = [...tokens].sort((a, b) => b.reserveBalance - a.reserveBalance)[0];
@@ -312,7 +336,7 @@ export function HomePage() {
   return (
     <div className="min-h-screen">
       {/* Trade Ticker */}
-      <TradeTicker trades={globalTrades} tokenSymbols={tokenSymbols} />
+      {animateTicker && <TradeTicker trades={globalTrades} tokenSymbols={tokenSymbols} />}
 
       <div className="p-4 md:p-6 lg:p-8 pb-24">
         <div className="max-w-[1400px] mx-auto space-y-5">
@@ -407,17 +431,26 @@ export function HomePage() {
                 return (
                   <Link key={token.address} to={`/token/${token.address}`}
                     className="surface overflow-hidden group hover:border-white/[0.12] transition-all">
-                    <div className="aspect-[4/3] bg-gradient-to-br from-white/[0.02] to-transparent relative overflow-hidden">
-                      <TokenImage tokenAddress={token.address} symbol={token.symbol} onChainImageURI={token.imageURI}
-                        className="absolute inset-0 w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-4xl font-bold text-white/[0.04]" />
-                      {token.isGraduated && (
-                        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-emerald-500/20 backdrop-blur-sm rounded text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">Graduated</div>
-                      )}
-                      {!token.isGraduated && token.graduationProgress > 0 && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40"><div className="h-full bg-cre8-red" style={{ width: `${Math.min(token.graduationProgress, 100)}%` }} /></div>
-                      )}
-                    </div>
-                    <div className="p-3">
+                    {!compactMode && (
+                      <div className="aspect-[4/3] bg-gradient-to-br from-white/[0.02] to-transparent relative overflow-hidden">
+                        <TokenImage tokenAddress={token.address} symbol={token.symbol} onChainImageURI={token.imageURI}
+                          className="absolute inset-0 w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-4xl font-bold text-white/[0.04]" />
+                        <div className="absolute top-2 left-2 flex gap-1">
+                          {token.isGraduated && (
+                            <div className="px-1.5 py-0.5 bg-emerald-500/20 backdrop-blur-sm rounded text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">Graduated</div>
+                          )}
+                          {token.isForgeToken ? (
+                            <div className="px-1.5 py-0.5 bg-amber-500/20 backdrop-blur-sm rounded text-[10px] font-semibold text-amber-400 border border-amber-500/20">Creator Launch</div>
+                          ) : (
+                            <div className="px-1.5 py-0.5 bg-white/10 backdrop-blur-sm rounded text-[10px] font-semibold text-white/60 border border-white/10">Trenches</div>
+                          )}
+                        </div>
+                        {!token.isGraduated && token.graduationProgress > 0 && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40"><div className="h-full bg-cre8-red" style={{ width: `${Math.min(token.graduationProgress, 100)}%` }} /></div>
+                        )}
+                      </div>
+                    )}
+                    <div className={compactMode ? 'p-2' : 'p-3'}>
                       <div className="flex items-center gap-1.5 mb-1.5">
                         <CreatorAvatar address={token.creator} />
                         <span className="text-[11px] text-dim font-mono truncate">{token.creator.slice(0, 6)}...{token.creator.slice(-4)}</span>
@@ -427,7 +460,7 @@ export function HomePage() {
                         <h3 className="font-bold text-white text-sm truncate">{token.name}</h3>
                         <span className="text-xs text-cre8-red font-semibold shrink-0">${token.symbol}</span>
                       </div>
-                      {token.description ? (
+                      {showDescriptions && token.description ? (
                         <p className="text-xs text-dim/60 line-clamp-2 mb-2 leading-relaxed">{token.description}</p>
                       ) : <div className="mb-2" />}
                       <div className="flex items-center justify-between text-[11px]">
@@ -495,6 +528,11 @@ export function HomePage() {
                               <div className="flex items-center gap-1.5">
                                 <span className="font-semibold text-white text-sm truncate group-hover:text-cre8-red transition-colors">{token.name}</span>
                                 {token.isGraduated && <span className="text-[9px] px-1 py-0.5 bg-emerald-500/15 text-emerald-400 rounded font-medium">G</span>}
+                                {token.isForgeToken ? (
+                                  <span className="text-[9px] px-1 py-0.5 bg-amber-500/15 text-amber-400 rounded font-medium">Creator</span>
+                                ) : (
+                                  <span className="text-[9px] px-1 py-0.5 bg-white/[0.06] text-dim/60 rounded font-medium">Trenches</span>
+                                )}
                               </div>
                               <span className="text-[11px] text-dim font-mono">{token.symbol}</span>
                             </div>
@@ -606,22 +644,25 @@ export function HomePage() {
                   <span className="text-sm font-semibold text-white">Display Settings</span>
                 </div>
                 <div className="p-3 space-y-1">
-                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    onClick={() => toggleSetting('cre8_showDesc', setShowDescriptions)}>
                     <span className="text-sm text-dim">Show descriptions</span>
-                    <div className="w-8 h-4.5 bg-cre8-red/60 rounded-full relative cursor-pointer">
-                      <div className="absolute right-0.5 top-0.5 w-3.5 h-3.5 bg-white rounded-full" />
+                    <div className={`w-8 h-[18px] ${showDescriptions ? 'bg-cre8-red/60' : 'bg-white/[0.1]'} rounded-full relative transition-colors`}>
+                      <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all ${showDescriptions ? 'right-0.5 bg-white' : 'left-0.5 bg-white/50'}`} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    onClick={() => toggleSetting('cre8_animTicker', setAnimateTicker)}>
                     <span className="text-sm text-dim">Animate ticker</span>
-                    <div className="w-8 h-4.5 bg-cre8-red/60 rounded-full relative cursor-pointer">
-                      <div className="absolute right-0.5 top-0.5 w-3.5 h-3.5 bg-white rounded-full" />
+                    <div className={`w-8 h-[18px] ${animateTicker ? 'bg-cre8-red/60' : 'bg-white/[0.1]'} rounded-full relative transition-colors`}>
+                      <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all ${animateTicker ? 'right-0.5 bg-white' : 'left-0.5 bg-white/50'}`} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                  <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    onClick={() => toggleSetting('cre8_compact', setCompactMode)}>
                     <span className="text-sm text-dim">Compact mode</span>
-                    <div className="w-8 h-4.5 bg-white/[0.1] rounded-full relative cursor-pointer">
-                      <div className="absolute left-0.5 top-0.5 w-3.5 h-3.5 bg-white/50 rounded-full" />
+                    <div className={`w-8 h-[18px] ${compactMode ? 'bg-cre8-red/60' : 'bg-white/[0.1]'} rounded-full relative transition-colors`}>
+                      <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all ${compactMode ? 'right-0.5 bg-white' : 'left-0.5 bg-white/50'}`} />
                     </div>
                   </div>
                 </div>

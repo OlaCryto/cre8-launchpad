@@ -6,8 +6,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {LaunchpadFactory} from "../core/LaunchpadFactory.sol";
-import {BondingCurve} from "../core/BondingCurve.sol";
+import {LaunchpadFactoryV2} from "../core/LaunchpadFactoryV2.sol";
+import {BondingCurveV2} from "../core/BondingCurveV2.sol";
 import {CreatorRegistry} from "../core/CreatorRegistry.sol";
 import {LaunchpadErrors} from "../libraries/LaunchpadErrors.sol";
 import {Pausable} from "../security/Pausable.sol";
@@ -62,6 +62,8 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
         // Presale config (if enabled)
         uint256 presaleMaxPerWallet;    // Max AVAX per contributor
         uint256 presaleDuration;        // Presale duration in seconds
+        uint256 presaleHardCap;         // Maximum total AVAX to raise
+        uint256 presaleSoftCap;         // Minimum for success (0 = no soft cap)
 
         // Whitelist config (if enabled)
         address[] whitelist;            // Whitelisted addresses
@@ -115,7 +117,7 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
 
     // ============ State Variables ============
 
-    LaunchpadFactory public factory;
+    LaunchpadFactoryV2 public factory;
     CreatorRegistry public creatorRegistry;
 
     // Launch tracking
@@ -137,7 +139,7 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
         if (factory_ == address(0)) revert LaunchpadErrors.ZeroAddress();
         if (creatorRegistry_ == address(0)) revert LaunchpadErrors.ZeroAddress();
 
-        factory = LaunchpadFactory(payable(factory_));
+        factory = LaunchpadFactoryV2(payable(factory_));
         creatorRegistry = CreatorRegistry(creatorRegistry_);
     }
 
@@ -145,7 +147,7 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
 
     function setFactory(address factory_) external onlyOwner {
         if (factory_ == address(0)) revert LaunchpadErrors.ZeroAddress();
-        factory = LaunchpadFactory(payable(factory_));
+        factory = LaunchpadFactoryV2(payable(factory_));
     }
 
     function setCreatorRegistry(address registry_) external onlyOwner {
@@ -183,6 +185,8 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
             if (config_.presaleMaxPerWallet == 0) revert LaunchpadErrors.ZeroAmount();
             if (config_.presaleDuration < MIN_PRESALE_DURATION) revert LaunchpadErrors.InvalidInput();
             if (config_.presaleDuration > MAX_PRESALE_DURATION) revert LaunchpadErrors.InvalidInput();
+            if (config_.presaleHardCap == 0) revert LaunchpadErrors.ZeroAmount();
+            if (config_.presaleSoftCap > config_.presaleHardCap) revert LaunchpadErrors.InvalidInput();
         }
 
         if (config_.whitelistEnabled) {
@@ -214,7 +218,9 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
                 msg.sender,
                 config_.presaleMaxPerWallet,
                 config_.presaleDuration,
-                address(this)
+                address(this),
+                config_.presaleHardCap,
+                config_.presaleSoftCap
             );
 
             launch.presaleVault = address(vault);
@@ -283,21 +289,21 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
     function _executeLaunch(uint256 launchId, uint256 creationFee) internal {
         ForgeLaunch storage launch = launches[launchId];
 
-        // Build factory params
-        LaunchpadFactory.LaunchParams memory params = LaunchpadFactory.LaunchParams({
-            name: launch.config.name,
-            symbol: launch.config.symbol,
-            description: launch.config.description,
-            imageURI: launch.config.imageURI,
-            twitter: launch.config.twitter,
-            telegram: launch.config.telegram,
-            website: launch.config.website
-        });
+        // Build whitelist array — always whitelist this contract for presale buys
+        address[] memory whitelistAddrs = new address[](1);
+        whitelistAddrs[0] = address(this);
 
-        // Deploy token + bonding curve via factory
-        (address token, address bondingCurve) = factory.createTokenFor{value: creationFee}(
-            params,
-            launch.creator
+        // Deploy token + bonding curve via V2 factory
+        (address token, address bondingCurve) = factory.createTokenForForge{value: creationFee}(
+            launch.config.name,
+            launch.config.symbol,
+            launch.config.description,
+            launch.config.imageURI,
+            launch.config.twitter,
+            launch.config.telegram,
+            launch.config.website,
+            launch.creator,
+            whitelistAddrs
         );
 
         launch.token = token;
@@ -305,9 +311,6 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
         launch.launchedAt = block.timestamp;
 
         tokenToLaunchId[token] = launchId;
-
-        // Whitelist this contract on the curve so presale bulk buy bypasses anti-bot
-        BondingCurve(payable(bondingCurve)).setWhitelisted(address(this), true);
 
         // Handle presale: buy on curve with presale AVAX
         if (launch.config.presaleEnabled && launch.presaleVault != address(0)) {
@@ -343,9 +346,12 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
         // Withdraw AVAX from vault to this contract
         vault.withdrawForLaunch();
 
-        // Buy tokens on the bonding curve with the presale AVAX
-        BondingCurve curve = BondingCurve(payable(launch.bondingCurve));
-        uint256 tokensOut = curve.buy{value: totalAvax}(0); // no slippage check for presale buy
+        // Buy tokens on the V2 bonding curve with the presale AVAX
+        // Apply 5% slippage tolerance to protect presale contributors from sandwich attacks
+        BondingCurveV2 curve = BondingCurveV2(payable(launch.bondingCurve));
+        (uint256 expectedTokens,) = curve.getBuyPrice(totalAvax);
+        uint256 minTokensOut = (expectedTokens * 95) / 100;
+        uint256 tokensOut = curve.buy{value: totalAvax}(minTokensOut);
 
         // Send tokens to vault for contributor claims
         IERC20(launch.token).safeTransfer(launch.presaleVault, tokensOut);
@@ -390,16 +396,13 @@ contract LaunchManager is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Set up whitelist window on the bonding curve
+     * @notice Set up whitelist window
+     * @dev Whitelist is handled at the token level in V2, not on the bonding curve.
+     *      For Forge launches, we use the token's whitelist mechanism via the factory.
+     *      For MVP, we track the whitelist phase internally and enforce it through openPublicTrading().
      */
     function _handleWhitelist(uint256 launchId) internal {
         ForgeLaunch storage launch = launches[launchId];
-        BondingCurve curve = BondingCurve(payable(launch.bondingCurve));
-
-        // Whitelist addresses on the bonding curve's anti-bot system
-        for (uint256 i = 0; i < launch.config.whitelist.length; i++) {
-            curve.setWhitelisted(launch.config.whitelist[i], true);
-        }
 
         launch.whitelistEndTime = block.timestamp + launch.config.whitelistDuration;
         launch.phase = LaunchPhase.WhitelistOnly;

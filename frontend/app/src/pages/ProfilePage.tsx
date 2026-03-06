@@ -59,22 +59,31 @@ export function ProfilePage() {
     let cancelled = false;
     (async () => {
       setHoldingsLoading(true);
-      const results: TokenHolding[] = [];
-      for (const token of allTokens) {
-        try {
+      // Batch all balanceOf calls in parallel instead of sequential
+      const balanceResults = await Promise.allSettled(
+        allTokens.map(async (token) => {
           const raw = await publicClient.readContract({
             address: token.address as any,
             abi: ERC20ABI,
             functionName: 'balanceOf',
             args: [profileAddress as any],
           });
-          const bal = Number(formatUnits(raw as bigint, 18));
-          if (bal > 0) {
-            results.push({ address: token.address, name: token.name, symbol: token.symbol, balance: bal, currentPrice: token.currentPrice });
-          }
-        } catch { /* skip */ }
-      }
-      if (!cancelled) { setHoldings(results); setHoldingsLoading(false); }
+          return { token, balance: Number(formatUnits(raw as bigint, 18)) };
+        })
+      );
+      if (cancelled) return;
+      const results: TokenHolding[] = balanceResults
+        .filter((r): r is PromiseFulfilledResult<{ token: typeof allTokens[0]; balance: number }> =>
+          r.status === 'fulfilled' && r.value.balance > 0)
+        .map(r => ({
+          address: r.value.token.address,
+          name: r.value.token.name,
+          symbol: r.value.token.symbol,
+          balance: r.value.balance,
+          currentPrice: r.value.token.currentPrice,
+        }));
+      setHoldings(results);
+      setHoldingsLoading(false);
     })();
     return () => { cancelled = true; };
   }, [profileAddress, allTokens]);

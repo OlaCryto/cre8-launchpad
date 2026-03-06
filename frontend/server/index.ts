@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { initDatabase } from './database.js';
 import authRoutes from './routes/auth.js';
 import imageRoutes from './routes/images.js';
 import userRoutes from './routes/users.js';
@@ -11,6 +12,9 @@ import priceRoutes from './routes/prices.js';
 import favoriteRoutes from './routes/favorites.js';
 import creatorRoutes from './routes/creators.js';
 import adminRoutes from './routes/admin.js';
+import followRoutes from './routes/follows.js';
+import notificationRoutes from './routes/notifications.js';
+import presaleRoutes from './routes/presales.js';
 import { startPriceIndexer } from './services/priceIndexer.js';
 
 const app = express();
@@ -69,16 +73,48 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/prices', priceRoutes);
 app.use('/api/favorites', writeLimiter, favoriteRoutes);
 app.use('/api/creators', creatorRoutes);
-app.use('/api/admin', adminRoutes);
+const adminLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: { error: 'Too many admin requests' },
+});
+app.use('/api/admin', adminLimiter, adminRoutes);
+app.use('/api/follows', writeLimiter, followRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/presales', presaleRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`Cre8 server running on http://localhost:${PORT}`);
-  console.log(`Frontend URL: ${FRONTEND_URL}`);
-  console.log(`Database: SQLite (WAL mode)`);
-  startPriceIndexer();
+function validateEnv() {
+  const required = ['DATABASE_URL', 'ENCRYPTION_KEY'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    console.error(`[FATAL] Missing required env vars: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  if (!process.env.ADMIN_API_KEY) {
+    console.warn('[WARN] ADMIN_API_KEY not set — admin routes will be inaccessible');
+  }
+  if (!process.env.TWITTER_CLIENT_ID || !process.env.TWITTER_CLIENT_SECRET) {
+    console.warn('[WARN] Twitter OAuth credentials not set — auth will fail');
+  }
+}
+
+async function start() {
+  validateEnv();
+  await initDatabase();
+  app.listen(PORT, () => {
+    console.log(`Cre8 server running on http://localhost:${PORT}`);
+    console.log(`Frontend URL: ${FRONTEND_URL}`);
+    console.log(`Database: PostgreSQL`);
+    startPriceIndexer();
+  });
+}
+
+start().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

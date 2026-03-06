@@ -20,16 +20,15 @@ const applyLimiter = rateLimit({
   message: { error: 'Too many applications, please try again later' },
 });
 
-// POST /api/creators/apply — submit a creator application
-router.post('/apply', applyLimiter, requireAuth, (req: AuthenticatedRequest, res: Response) => {
+router.post('/apply', applyLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.sessionUser!;
 
-  if (hasPendingApplication(user.id)) {
+  if (await hasPendingApplication(user.id)) {
     res.status(409).json({ error: 'You already have a pending application' });
     return;
   }
 
-  if (isVerifiedCreator(user.wallet_address)) {
+  if (await isVerifiedCreator(user.wallet_address)) {
     res.status(409).json({ error: 'You are already a verified creator' });
     return;
   }
@@ -67,7 +66,7 @@ router.post('/apply', applyLimiter, requireAuth, (req: AuthenticatedRequest, res
     return;
   }
 
-  const result = createApplication({
+  const result = await createApplication({
     user_id: user.id,
     wallet_address: user.wallet_address.toLowerCase(),
     project_name: sanitizeText(project_name.trim()),
@@ -87,18 +86,16 @@ router.post('/apply', applyLimiter, requireAuth, (req: AuthenticatedRequest, res
   res.status(201).json({ id: result.id, status: 'pending' });
 });
 
-// GET /api/creators/my-applications — get current user's applications
-router.get('/my-applications', requireAuth, (req: AuthenticatedRequest, res: Response) => {
-  const apps = getApplicationsByUser(req.sessionUser!.id);
+router.get('/my-applications', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const apps = await getApplicationsByUser(req.sessionUser!.id);
   res.json({ applications: apps });
 });
 
-// GET /api/creators/status — check if current user is a verified creator
-router.get('/status', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+router.get('/status', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const user = req.sessionUser!;
-  const verified = isVerifiedCreator(user.wallet_address);
-  const pending = hasPendingApplication(user.id);
-  const application = verified ? getApprovedApplicationByWallet(user.wallet_address) : null;
+  const verified = await isVerifiedCreator(user.wallet_address);
+  const pending = await hasPendingApplication(user.id);
+  const application = verified ? await getApprovedApplicationByWallet(user.wallet_address) : null;
 
   res.json({
     is_verified: verified,
@@ -112,15 +109,14 @@ router.get('/status', requireAuth, (req: AuthenticatedRequest, res: Response) =>
   });
 });
 
-// GET /api/creators/check/:address — public check if an address is a verified creator
-router.get('/check/:address', (req, res) => {
+router.get('/check/:address', async (req, res) => {
   const addr = req.params.address;
   if (!isValidAddress(addr)) {
     res.status(400).json({ error: 'Invalid address' });
     return;
   }
-  const verified = isVerifiedCreator(addr);
-  const app = verified ? getApprovedApplicationByWallet(addr) : null;
+  const verified = await isVerifiedCreator(addr);
+  const app = verified ? await getApprovedApplicationByWallet(addr) : null;
   res.json({
     is_verified: verified,
     project_name: app?.project_name || null,
@@ -128,7 +124,6 @@ router.get('/check/:address', (req, res) => {
   });
 });
 
-// GET /api/creators/categories — list valid categories
 router.get('/categories', (_req, res) => {
   res.json({ categories: VALID_CATEGORIES });
 });

@@ -241,7 +241,7 @@ contract LaunchpadFactoryV2 is
         // Handle creator initial buy if specified
         if (params.creatorBuyBps > 0 && msg.value > _getCreationFee()) {
             uint256 buyAmount = msg.value - _getCreationFee();
-            _executeCreatorBuy(bondingCurve, buyAmount);
+            _executeCreatorBuy(bondingCurve, buyAmount, msg.sender);
         }
 
         return (token, bondingCurve);
@@ -333,7 +333,7 @@ contract LaunchpadFactoryV2 is
         // Handle creator initial buy if specified
         if (params.creatorBuyBps > 0 && msg.value > _getCreationFee()) {
             uint256 buyAmount = msg.value - _getCreationFee();
-            _executeCreatorBuy(bondingCurve, buyAmount);
+            _executeCreatorBuy(bondingCurve, buyAmount, msg.sender);
         }
 
         return (token, bondingCurve);
@@ -442,9 +442,15 @@ contract LaunchpadFactoryV2 is
         return 0;
     }
 
-    function _executeCreatorBuy(address bondingCurve, uint256 amount) internal {
+    function _executeCreatorBuy(address bondingCurve, uint256 amount, address creator_) internal {
         // Forward AVAX to bonding curve for creator buy
-        BondingCurveV2(payable(bondingCurve)).buy{value: amount}(0);
+        uint256 tokensOut = BondingCurveV2(payable(bondingCurve)).buy{value: amount}(0);
+
+        // buy() mints tokens to msg.sender (this factory), so transfer them to the creator
+        address token = BondingCurveV2(payable(bondingCurve)).token();
+        if (tokensOut > 0) {
+            IERC20(token).safeTransfer(creator_, tokensOut);
+        }
     }
 
     function _recordLaunch(
@@ -515,6 +521,17 @@ contract LaunchpadFactoryV2 is
 
         // Get AVAX from bonding curve
         uint256 avaxForLiquidity = curve.executeGraduation();
+
+        // Collect graduation fee (1.5% of liquidity AVAX)
+        if (feeManager != address(0)) {
+            uint256 graduationFee = IFeeManager(feeManager).collectGraduationFee(token, avaxForLiquidity);
+            if (graduationFee > 0 && graduationFee < avaxForLiquidity) {
+                // Send the fee AVAX to the fee manager
+                (bool feeSuccess,) = feeManager.call{value: graduationFee}("");
+                if (!feeSuccess) revert LaunchpadErrors.FeeTransferFailed();
+                avaxForLiquidity -= graduationFee;
+            }
+        }
 
         // Graduate the token — this transfers LIQUIDITY_SUPPLY to this contract
         LaunchpadTokenV2(token).graduate();
@@ -690,6 +707,114 @@ contract LaunchpadFactoryV2 is
         } else {
             IERC20(token_).safeTransfer(to, amount);
         }
+    }
+
+    // ============ Forge Mode Support ============
+
+    /// @notice Authorized LaunchManager address for Forge Mode launches
+    address public launchManager;
+
+    /// @notice Set the LaunchManager address
+    function setLaunchManager(address launchManager_) external onlyOwner {
+        launchManager = launchManager_;
+    }
+
+    /**
+     * @notice Create a token on behalf of a creator (called by LaunchManager for Forge Mode)
+     * @param name Token name
+     * @param symbol Token symbol
+     * @param description Token description
+     * @param imageURI Token image URI
+     * @param twitter Twitter link
+     * @param telegram Telegram link
+     * @param website Website link
+     * @param creator_ The actual creator address
+     * @param whitelistAddrs Addresses to whitelist on the bonding curve (e.g. LaunchManager)
+     * @return token Deployed token address
+     * @return bondingCurve Deployed bonding curve address
+     */
+    function createTokenForForge(
+        string calldata name,
+        string calldata symbol,
+        string calldata description,
+        string calldata imageURI,
+        string calldata twitter,
+        string calldata telegram,
+        string calldata website,
+        address creator_,
+        address[] calldata whitelistAddrs
+    )
+        external
+        payable
+        nonReentrant
+        whenNotPaused
+        returns (address token, address bondingCurve)
+    {
+        // Only the authorized LaunchManager can call this
+        if (msg.sender != launchManager) revert LaunchpadErrors.Unauthorized();
+
+        // Validate params
+        _validateTokenParams(name, symbol);
+
+        // Collect creation fee
+        _collectCreationFee();
+
+        // Deploy bonding curve clone
+        bondingCurve = bondingCurveImplementation.clone();
+
+        // Deploy token clone
+        token = tokenImplementation.clone();
+
+        // Initialize token (Easy mode — Forge tokens trade publicly once launched)
+        LaunchpadTokenV2.TokenMetadata memory metadata = LaunchpadTokenV2.TokenMetadata({
+            name: name,
+            symbol: symbol,
+            description: description,
+            imageURI: imageURI,
+            twitter: twitter,
+            telegram: telegram,
+            website: website
+        });
+
+        LaunchpadTokenV2(token).initialize(name, symbol, creator_, bondingCurve, metadata);
+
+        // Initialize bonding curve
+        BondingCurveV2.CurveParams memory curveParams = BondingCurveV2.CurveParams({
+            basePrice: 0,
+            slope: 0,
+            maxSupply: 0,
+            graduationThreshold: graduationThreshold
+        });
+
+        BondingCurveV2(payable(bondingCurve)).initialize(token, curveParams);
+
+        // Configure bonding curve
+        if (router != address(0)) {
+            BondingCurveV2(payable(bondingCurve)).setRouter(router);
+        }
+        if (feeManager != address(0)) {
+            BondingCurveV2(payable(bondingCurve)).setFeeManager(feeManager);
+        }
+
+        // Whitelist addresses on the bonding curve (e.g. LaunchManager for presale buys)
+        for (uint256 i = 0; i < whitelistAddrs.length; i++) {
+            BondingCurveV2(payable(bondingCurve)).setWhitelisted(whitelistAddrs[i], true);
+        }
+
+        // Validate creator has profile
+        string memory creatorHandle = "";
+        if (requireProfile && address(creatorRegistry) != address(0)) {
+            if (!creatorRegistry.hasProfile(creator_)) {
+                revert LaunchpadErrors.Unauthorized();
+            }
+            CreatorRegistry.CreatorProfile memory profile = creatorRegistry.getProfile(creator_);
+            creatorHandle = profile.handle;
+        }
+
+        // Record launch
+        _recordLaunch(token, bondingCurve, creator_, name, symbol, false, creatorHandle);
+
+        return (token, bondingCurve);
     }
 
     // ============ Receive Function ============

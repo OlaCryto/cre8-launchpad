@@ -3,10 +3,9 @@ import {
   getAllApplications, getApplicationById, reviewApplication,
   getPendingApplications, getApplicationCountByStatus,
 } from '../database.js';
+import { param } from '../middleware/validation.js';
 
 const router = Router();
-
-const ADMIN_ADDRESSES = (process.env.ADMIN_ADDRESSES || '').toLowerCase().split(',').map(a => a.trim()).filter(Boolean);
 
 function requireAdmin(req: Request, res: Response, next: () => void) {
   const apiKey = req.headers['x-admin-key'] as string;
@@ -20,43 +19,38 @@ function requireAdmin(req: Request, res: Response, next: () => void) {
   res.status(403).json({ error: 'Admin access required' });
 }
 
-// GET /api/admin/applications — list all applications with pagination
-router.get('/applications', requireAdmin, (req: Request, res: Response) => {
+router.get('/applications', requireAdmin, async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
   const status = req.query.status as string;
 
   if (status === 'pending') {
-    const apps = getPendingApplications();
+    const apps = await getPendingApplications();
     res.json({ applications: apps, total: apps.length });
     return;
   }
 
-  const { applications, total } = getAllApplications(limit, offset);
+  const { applications, total } = await getAllApplications(limit, offset);
   res.json({ applications, total, limit, offset });
 });
 
-// GET /api/admin/applications/stats — get application counts by status
-router.get('/applications/stats', requireAdmin, (_req: Request, res: Response) => {
-  res.json({
-    pending: getApplicationCountByStatus('pending'),
-    approved: getApplicationCountByStatus('approved'),
-    rejected: getApplicationCountByStatus('rejected'),
-    total: getApplicationCountByStatus('pending') +
-           getApplicationCountByStatus('approved') +
-           getApplicationCountByStatus('rejected'),
-  });
+router.get('/applications/stats', requireAdmin, async (_req: Request, res: Response) => {
+  const [pending, approved, rejected] = await Promise.all([
+    getApplicationCountByStatus('pending'),
+    getApplicationCountByStatus('approved'),
+    getApplicationCountByStatus('rejected'),
+  ]);
+  res.json({ pending, approved, rejected, total: pending + approved + rejected });
 });
 
-// GET /api/admin/applications/:id — get a single application
-router.get('/applications/:id', requireAdmin, (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
+router.get('/applications/:id', requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(param(req, 'id'));
   if (isNaN(id) || id < 1) {
     res.status(400).json({ error: 'Invalid application ID' });
     return;
   }
 
-  const app = getApplicationById(id);
+  const app = await getApplicationById(id);
   if (!app) {
     res.status(404).json({ error: 'Application not found' });
     return;
@@ -65,15 +59,14 @@ router.get('/applications/:id', requireAdmin, (req: Request, res: Response) => {
   res.json(app);
 });
 
-// POST /api/admin/applications/:id/review — approve or reject an application
-router.post('/applications/:id/review', requireAdmin, (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
+router.post('/applications/:id/review', requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(param(req, 'id'));
   if (isNaN(id) || id < 1) {
     res.status(400).json({ error: 'Invalid application ID' });
     return;
   }
 
-  const app = getApplicationById(id);
+  const app = await getApplicationById(id);
   if (!app) {
     res.status(404).json({ error: 'Application not found' });
     return;
@@ -90,8 +83,7 @@ router.post('/applications/:id/review', requireAdmin, (req: Request, res: Respon
     return;
   }
 
-  const reviewerInfo = 'admin';
-  reviewApplication(id, decision, notes || '', reviewerInfo);
+  await reviewApplication(id, decision, notes || '', 'admin');
 
   res.json({
     id,

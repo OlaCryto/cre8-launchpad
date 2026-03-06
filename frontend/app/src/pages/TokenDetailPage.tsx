@@ -6,7 +6,7 @@ import { BondingCurveViz } from '@/components/BondingCurveViz';
 import { ThreadSection } from '@/components/ThreadSection';
 import {
   Check, Copy, ExternalLink, Share2, Star,
-  Users, BarChart3, MessageCircle, Filter,
+  BarChart3, Filter,
   Twitter, Globe, MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { formatPrice } from '@/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTokenLaunch, useBondingCurveQuote, useAvaxBalance, useTokenBalance, useTradeActivity, useTokenHolders } from '@/hooks/useContracts';
+import { useTokenLaunch, useBondingCurveQuote, useAvaxBalance, useTokenBalance, useTradeActivity, useTokenHolders, usePriceChanges } from '@/hooks/useContracts';
 import { useBuy, useSell } from '@/hooks/useTransactions';
 import { publicClient } from '@/config/client';
 import { ERC20ABI } from '@/config/abis';
@@ -109,9 +109,58 @@ export function TokenDetailPage() {
   const [chartInterval, setChartInterval] = useState<'1H' | '4H' | '1D' | '1W' | 'ALL'>('1H');
   const [tradeFilter, setTradeFilter] = useState(false);
   const [tradeMinSize, setTradeMinSize] = useState(0.05);
-  const [starred, setStarred] = useState(() => {
-    try { const favs = JSON.parse(localStorage.getItem('cre8_favorites') || '[]'); return favs.includes(tokenAddress); } catch { return false; }
-  });
+  const [starred, setStarred] = useState(false);
+  const [starLoading, setStarLoading] = useState(false);
+
+  const [following, setFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+  // Check follow status on mount
+  useEffect(() => {
+    if (!displayCreator || !isAuthenticated) return;
+    const session = localStorage.getItem('cre8_session');
+    if (!session) return;
+    fetch(`${API_URL}/api/follows/${displayCreator}`, {
+      headers: { Authorization: `Bearer ${session}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setFollowing(data.following); })
+      .catch(() => {});
+  }, [displayCreator, isAuthenticated, API_URL]);
+
+  // Check favorite status on mount
+  useEffect(() => {
+    if (!tokenAddress || !isAuthenticated) return;
+    const session = localStorage.getItem('cre8_session');
+    if (!session) return;
+    fetch(`${API_URL}/api/favorites`, {
+      headers: { Authorization: `Bearer ${session}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.favorites) setStarred(data.favorites.includes(tokenAddress.toLowerCase()));
+      })
+      .catch(() => {});
+  }, [tokenAddress, isAuthenticated, API_URL]);
+
+  const handleFollow = async () => {
+    if (!isAuthenticated || !displayCreator) return;
+    const session = localStorage.getItem('cre8_session');
+    if (!session) return;
+    setFollowLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/follows/${displayCreator}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFollowing(data.followed);
+      }
+    } catch { /* ignore */ }
+    setFollowLoading(false);
+  };
 
   const [slippage, setSlippage] = useState(() => {
     try { return parseFloat(localStorage.getItem('cre8_slippage') || '2'); } catch { return 2; }
@@ -123,16 +172,23 @@ export function TokenDetailPage() {
     try { localStorage.setItem('cre8_slippage', String(val)); } catch { /* ignore */ }
   };
 
-  const toggleStar = () => {
-    setStarred(prev => {
-      const next = !prev;
-      try {
-        const favs: string[] = JSON.parse(localStorage.getItem('cre8_favorites') || '[]');
-        const updated = next ? [...new Set([...favs, tokenAddress])] : favs.filter((a: string) => a !== tokenAddress);
-        localStorage.setItem('cre8_favorites', JSON.stringify(updated));
-      } catch { /* ignore */ }
-      return next;
-    });
+  const toggleStar = async () => {
+    if (!tokenAddress || !isAuthenticated) return;
+    const session = localStorage.getItem('cre8_session');
+    if (!session) return;
+    setStarLoading(true);
+    const wasFav = starred;
+    setStarred(!wasFav); // optimistic update
+    try {
+      const res = await fetch(`${API_URL}/api/favorites/${tokenAddress.toLowerCase()}`, {
+        method: wasFav ? 'DELETE' : 'POST',
+        headers: { Authorization: `Bearer ${session}` },
+      });
+      if (!res.ok) setStarred(wasFav); // revert on failure
+    } catch {
+      setStarred(wasFav); // revert on error
+    }
+    setStarLoading(false);
   };
 
   const quote = useBondingCurveQuote(displayAddress, parseFloat(amount) || 0, activeTab === 'buy');
@@ -142,6 +198,7 @@ export function TokenDetailPage() {
   const { isLoading: sellLoading, isPending: sellPending, step: sellStep, execute: executeSell } = useSell();
   const { trades, isLoading: tradesLoading } = useTradeActivity(displayAddress);
   const { holders, isLoading: holdersLoading } = useTokenHolders(displayAddress);
+  const priceChanges = usePriceChanges(displayAddress);
 
   const explorer = CHAINS[ACTIVE_NETWORK].explorer;
 
@@ -244,7 +301,6 @@ export function TokenDetailPage() {
   const graduationProgress = launchData?.graduationProgress || 0;
   const currentPrice = launchData?.currentPrice || 0;
   const reserveBalance = launchData?.reserveBalance || 0;
-  const tokensSold = launchData?.tokensSold ? Number(formatEther(launchData.tokensSold)) : 0;
   const timeIntervals: Array<'1H' | '4H' | '1D' | '1W' | 'ALL'> = ['1H', '4H', '1D', '1W', 'ALL'];
   const description = launchData?.description || '';
 
@@ -270,7 +326,27 @@ export function TokenDetailPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold text-white">{displayName}</h1>
                 <span className="text-sm text-dim">{displaySymbol}</span>
-                {launchData?.isGraduated && <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-semibold">Graduated</span>}
+                {launchData?.isGraduated && (
+                  <>
+                    <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-semibold">Graduated</span>
+                    <a
+                      href={`https://traderjoexyz.com/avalanche/trade?inputCurrency=AVAX&outputCurrency=${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] px-2 py-0.5 bg-blue-500/15 text-blue-400 rounded-full font-semibold hover:bg-blue-500/25 transition-colors flex items-center gap-1"
+                    >
+                      Trade on TraderJoe <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                    <a
+                      href={`https://dexscreener.com/avalanche/${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] px-2 py-0.5 bg-green-500/15 text-green-400 rounded-full font-semibold hover:bg-green-500/25 transition-colors flex items-center gap-1"
+                    >
+                      DexScreener <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1 text-xs text-dim">
                 <AddressAvatar address={displayCreator} size={16} />
@@ -293,7 +369,7 @@ export function TokenDetailPage() {
                 {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{displayAddress?.slice(0, 4)}...{displayAddress?.slice(-4)}</span>
               </button>
-              <button onClick={toggleStar}
+              <button onClick={toggleStar} disabled={starLoading}
                 className={`p-1.5 rounded-lg border transition-colors ${starred ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' : 'border-white/[0.08] text-dim hover:text-white hover:bg-white/[0.04]'}`}>
                 <Star className={`w-4 h-4 ${starred ? 'fill-amber-400' : ''}`} />
               </button>
@@ -331,6 +407,23 @@ export function TokenDetailPage() {
                   <p className="text-dim mb-0.5">Traders</p>
                   <p className="text-white font-mono font-semibold tabular-nums">{traderCount || '-'}</p>
                 </div>
+                {priceChanges && (
+                  <>
+                    {[
+                      { label: '5m', value: priceChanges.change_5m },
+                      { label: '1h', value: priceChanges.change_1h },
+                      { label: '6h', value: priceChanges.change_6h },
+                      { label: '24h', value: priceChanges.change_24h },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="text-center px-3 py-1.5 bg-cre8-surface rounded-lg border border-white/[0.04]">
+                        <p className="text-dim mb-0.5">{label}</p>
+                        <p className={`font-mono font-semibold tabular-nums ${value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : 'text-white'}`}>
+                          {value !== null && value !== undefined ? `${value > 0 ? '+' : ''}${value.toFixed(1)}%` : '-'}
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
 
@@ -352,19 +445,30 @@ export function TokenDetailPage() {
             </div>
 
             {/* Social links + Description */}
-            {(description || launchData?.description) && (
+            {(description || launchData?.description || launchData?.twitter || launchData?.website || launchData?.telegram) && (
               <div className="px-1 space-y-2">
                 {/* Social Links Row */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  {launchData?.description && (
-                    <>
-                      <a href="#" className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors">
-                        <Twitter className="w-3.5 h-3.5" /><span className="font-mono">—</span>
-                      </a>
-                      <a href="#" className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors">
-                        <Globe className="w-3.5 h-3.5" /><span className="font-mono">—</span>
-                      </a>
-                    </>
+                  {launchData?.twitter && (
+                    <a href={launchData.twitter.startsWith('http') ? launchData.twitter : `https://x.com/${launchData.twitter.replace('@', '')}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors">
+                      <Twitter className="w-3.5 h-3.5" /><span className="font-mono truncate max-w-[120px]">{launchData.twitter}</span>
+                    </a>
+                  )}
+                  {launchData?.telegram && (
+                    <a href={launchData.telegram.startsWith('http') ? launchData.telegram : `https://t.me/${launchData.telegram}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors">
+                      <MessageSquare className="w-3.5 h-3.5" /><span className="font-mono truncate max-w-[120px]">{launchData.telegram}</span>
+                    </a>
+                  )}
+                  {launchData?.website && (
+                    <a href={launchData.website.startsWith('http') ? launchData.website : `https://${launchData.website}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors">
+                      <Globe className="w-3.5 h-3.5" /><span className="font-mono truncate max-w-[120px]">{launchData.website}</span>
+                    </a>
                   )}
                   <a href={`${explorer}/token/${displayAddress}`} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs text-dim hover:text-white transition-colors ml-auto">
@@ -474,6 +578,43 @@ export function TokenDetailPage() {
           <div className="xl:col-span-4 space-y-4">
             {/* Trading Panel */}
             <div className="surface p-4">
+              {launchData?.isGraduated ? (
+                <div className="text-center py-6">
+                  <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-7 h-7 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1">Token Graduated!</h3>
+                  <p className="text-sm text-dim mb-5">This token has graduated to TraderJoe DEX. Trade it there for the best liquidity.</p>
+                  <div className="space-y-2">
+                    <a
+                      href={`https://traderjoexyz.com/avalanche/trade?inputCurrency=AVAX&outputCurrency=${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-semibold text-sm transition-colors"
+                    >
+                      Trade on TraderJoe <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <a
+                      href={`https://dexscreener.com/avalanche/${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-white/[0.04] border border-white/[0.08] text-dim hover:text-white hover:bg-white/[0.08] font-semibold text-sm transition-colors"
+                    >
+                      View on DexScreener <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                  {/* Still show position if user holds tokens */}
+                  {isAuthenticated && user?.wallet?.address && tokenBalanceFormatted > 0 && (
+                    <div className="mt-5 pt-4 border-t border-white/[0.06]">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-dim">Your balance</span>
+                        <span className="text-white font-mono tabular-nums">{tokenBalanceFormatted.toLocaleString()} {displaySymbol}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
               <div className="flex bg-cre8-base p-1 rounded-lg mb-3 border border-white/[0.04]">
                 <button onClick={() => { setActiveTab('buy'); setAmount(''); }}
                   className={`flex-1 py-2.5 rounded-md font-semibold text-sm transition-all ${activeTab === 'buy' ? 'bg-green-500 text-white' : 'text-dim hover:text-white'}`}>
@@ -554,17 +695,32 @@ export function TokenDetailPage() {
               )}
 
               {/* Position Info */}
-              <div className="mt-3 pt-3 border-t border-white/[0.06]">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-white font-mono tabular-nums">${positionValue.toFixed(2)}</span>
-                  <span className="text-sm text-dim font-mono tabular-nums">{tokenBalanceFormatted.toLocaleString()} {displaySymbol}</span>
+              {isAuthenticated && user?.wallet?.address && (
+                <div className="mt-3 pt-3 border-t border-white/[0.06]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-white font-mono tabular-nums">${positionValue.toFixed(2)}</span>
+                    <span className="text-sm text-dim font-mono tabular-nums">{tokenBalanceFormatted.toLocaleString()} {displaySymbol}</span>
+                  </div>
+                  {(() => {
+                    const addr = user.wallet.address.toLowerCase();
+                    const myTrades = trades.filter(t => t.trader.toLowerCase() === addr);
+                    const totalSpent = myTrades.filter(t => t.type === 'buy').reduce((s, t) => s + t.avaxAmount, 0);
+                    const totalReceived = myTrades.filter(t => t.type === 'sell').reduce((s, t) => s + t.avaxAmount, 0);
+                    const costBasis = totalSpent - totalReceived;
+                    const pnl = positionValue - costBasis;
+                    const pnlPct = costBasis > 0 ? ((pnl / costBasis) * 100) : 0;
+                    return (
+                      <div className="flex items-center gap-4 text-[11px] text-dim">
+                        <span>Position</span>
+                        <span>{myTrades.length} trade{myTrades.length !== 1 ? 's' : ''}</span>
+                        <span className={`ml-auto font-mono tabular-nums ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {costBasis > 0 ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)} AVAX (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)` : '-'}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <div className="flex items-center gap-4 text-[11px] text-dim">
-                  <span>Position</span>
-                  <span>Trades</span>
-                  <span className="ml-auto">Profit/Loss</span>
-                </div>
-              </div>
+              )}
 
               {/* Quote details */}
               {amount && parseFloat(amount) > 0 && (
@@ -589,6 +745,8 @@ export function TokenDetailPage() {
                   </div>
                 </div>
               )}
+                </>
+              )}
             </div>
 
             {/* Creator Rewards */}
@@ -603,7 +761,10 @@ export function TokenDetailPage() {
                   </div>
                   <p className="text-[11px] text-dim mt-0.5">0.2% of trades</p>
                 </div>
-                <button className="text-xs text-dim hover:text-white border border-white/[0.06] rounded-lg px-3 py-1.5 transition-colors">Follow</button>
+                <button onClick={handleFollow} disabled={followLoading}
+                  className={`text-xs border rounded-lg px-3 py-1.5 transition-colors shrink-0 ${following ? 'bg-cre8-red/15 text-cre8-red border-cre8-red/30' : 'text-dim hover:text-white border-white/[0.06]'}`}>
+                  {followLoading ? '...' : following ? 'Following' : 'Follow'}
+                </button>
               </div>
             </div>
 

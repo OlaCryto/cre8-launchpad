@@ -130,7 +130,7 @@ export function CreatorApplyPage() {
     );
   }
 
-  // Already verified
+  // Already verified — redirect to Creator Dashboard
   if (status?.is_verified) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
@@ -143,8 +143,8 @@ export function CreatorApplyPage() {
           <p className="text-zinc-400 mb-2">Project: <span className="text-white">{status.application?.project_name}</span></p>
           <p className="text-zinc-500 text-sm mb-6">Category: {status.application?.category}</p>
           <div className="flex gap-3 justify-center">
-            <button onClick={() => navigate('/create')} className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg transition-colors">
-              Launch Creator Token
+            <button onClick={() => navigate('/creator/dashboard')} className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-lg transition-colors">
+              Go to Creator Dashboard
             </button>
           </div>
         </div>

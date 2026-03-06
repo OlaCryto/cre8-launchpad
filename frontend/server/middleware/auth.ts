@@ -12,10 +12,6 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-/**
- * Middleware that requires a valid Bearer session token.
- * Attaches `req.sessionUser` with public user fields (no encryption data).
- */
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -29,51 +25,51 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
     return;
   }
 
-  const result = findValidSession(token);
-  if (!result) {
-    res.status(401).json({ error: 'Invalid or expired session' });
-    return;
-  }
+  findValidSession(token).then(result => {
+    if (!result) {
+      res.status(401).json({ error: 'Invalid or expired session' });
+      return;
+    }
 
-  req.sessionUser = {
-    id: result.user.id,
-    twitter_id: result.user.twitter_id,
-    twitter_handle: result.user.twitter_handle,
-    twitter_name: result.user.twitter_name,
-    twitter_avatar: result.user.twitter_avatar,
-    wallet_address: result.user.wallet_address,
-  };
+    req.sessionUser = {
+      id: result.user.id,
+      twitter_id: result.user.twitter_id,
+      twitter_handle: result.user.twitter_handle,
+      twitter_name: result.user.twitter_name,
+      twitter_avatar: result.user.twitter_avatar,
+      wallet_address: result.user.wallet_address,
+    };
 
-  next();
+    next();
+  }).catch(() => {
+    res.status(500).json({ error: 'Session validation failed' });
+  });
 }
 
-/**
- * Optional auth — attaches sessionUser if token present, but doesn't block.
- */
 export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
     if (token && token.length >= 10) {
-      const result = findValidSession(token);
-      if (result) {
-        req.sessionUser = {
-          id: result.user.id,
-          twitter_id: result.user.twitter_id,
-          twitter_handle: result.user.twitter_handle,
-          twitter_name: result.user.twitter_name,
-          twitter_avatar: result.user.twitter_avatar,
-          wallet_address: result.user.wallet_address,
-        };
-      }
+      findValidSession(token).then(result => {
+        if (result) {
+          req.sessionUser = {
+            id: result.user.id,
+            twitter_id: result.user.twitter_id,
+            twitter_handle: result.user.twitter_handle,
+            twitter_name: result.user.twitter_name,
+            twitter_avatar: result.user.twitter_avatar,
+            wallet_address: result.user.wallet_address,
+          };
+        }
+        next();
+      }).catch(() => next());
+      return;
     }
   }
   next();
 }
 
-/**
- * Requires a valid INDEXER_API_KEY for internal service endpoints.
- */
 export function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const key = req.headers['x-api-key'] as string;
   const expected = process.env.INDEXER_API_KEY;

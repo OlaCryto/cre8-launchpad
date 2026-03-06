@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { type Address, formatEther, parseEther } from 'viem';
 import { publicClient } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
-import { LaunchpadFactoryABI, BondingCurveABI, LaunchpadRouterABI, ERC20ABI, TokenMetadataABI, TokensPurchasedEvent, TokensSoldEvent, TransferEvent, SwapExecutedEvent } from '@/config/abis';
+import { LaunchpadFactoryABI, BondingCurveABI, LaunchpadRouterABI, ERC20ABI, TokenMetadataABI, LaunchManagerABI, TokensPurchasedEvent, TokensSoldEvent, TransferEvent, SwapExecutedEvent } from '@/config/abis';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
 
@@ -25,6 +25,9 @@ export interface TokenLaunchInfo {
   tradingEnabled: boolean;
   imageURI: string;
   description: string;
+  twitter: string;
+  telegram: string;
+  website: string;
 }
 
 export interface BondingCurveQuote {
@@ -40,7 +43,8 @@ export interface TradeActivity {
   traderAvatar?: string;
   avaxAmount: number;
   tokenAmount: number;
-  newPrice: number;
+  /** Price after this trade. Available on per-token trades (BondingCurve events) but not on global SwapExecuted feed. */
+  newPrice?: number;
   timestamp: number;
   txHash: string;
   /** True for trades that just appeared via live polling */
@@ -68,6 +72,7 @@ export interface OnChainToken {
   isGraduated: boolean;
   imageURI: string;
   description: string;
+  isForgeToken: boolean;
 }
 
 // ============ Hooks ============
@@ -97,21 +102,26 @@ export function useOnChainTokens() {
           return;
         }
 
-        // 2. Get all token addresses (max 50 for now)
-        const limit = count > 50n ? 50n : count;
-        const addresses = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getTokens',
-          args: [0n, limit],
-        }) as string[];
+        // 2. Get all token addresses in pages of 50
+        const PAGE_SIZE = 50n;
+        const addresses: string[] = [];
+        for (let offset = 0n; offset < count; offset += PAGE_SIZE) {
+          const end = offset + PAGE_SIZE > count ? count : offset + PAGE_SIZE;
+          const page = await publicClient.readContract({
+            address: contracts.LaunchpadFactory as Address,
+            abi: LaunchpadFactoryABI,
+            functionName: 'getTokens',
+            args: [offset, end],
+          }) as string[];
+          addresses.push(...page);
+        }
 
         if (cancelled) return;
 
         // 3. For each token, read metadata in parallel
         const results = await Promise.allSettled(
           addresses.map(async (addr) => {
-            const [launchInfo, name, symbol, tokenMeta] = await Promise.all([
+            const [launchInfo, name, symbol, tokenMeta, isForge] = await Promise.all([
               publicClient.readContract({
                 address: contracts.LaunchpadFactory as Address,
                 abi: LaunchpadFactoryABI,
@@ -133,6 +143,12 @@ export function useOnChainTokens() {
                 abi: TokenMetadataABI,
                 functionName: 'metadata',
               }).catch(() => null),
+              contracts.LaunchManager ? publicClient.readContract({
+                address: contracts.LaunchManager as Address,
+                abi: LaunchManagerABI,
+                functionName: 'isForgeToken',
+                args: [addr as Address],
+              }).catch(() => false) : Promise.resolve(false),
             ]);
 
             const curveAddress = (launchInfo as any).bondingCurve;
@@ -170,6 +186,7 @@ export function useOnChainTokens() {
               isGraduated: (launchInfo as any).isGraduated,
               imageURI: (tokenMeta as any)?.imageURI || '',
               description: (tokenMeta as any)?.description || '',
+              isForgeToken: !!isForge,
             } as OnChainToken;
           })
         );
@@ -270,6 +287,9 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
           tradingEnabled: curveState === 0,
           imageURI: (tokenMeta as any)?.imageURI || '',
           description: (tokenMeta as any)?.description || '',
+          twitter: (tokenMeta as any)?.twitter || '',
+          telegram: (tokenMeta as any)?.telegram || '',
+          website: (tokenMeta as any)?.website || '',
         });
       } catch (err) {
         console.error('[useTokenLaunch] failed for', tokenAddress, err);
@@ -782,18 +802,9 @@ export function useTokenHolders(tokenAddress: string | undefined) {
 
 // ============ Global Trade Feed ============
 
-export interface GlobalTrade {
-  type: 'buy' | 'sell';
-  trader: string;
-  traderName?: string;
-  traderAvatar?: string;
+export interface GlobalTrade extends TradeActivity {
   tokenAddress: string;
   tokenSymbol: string;
-  avaxAmount: number;
-  tokenAmount: number;
-  timestamp: number;
-  txHash: string;
-  isNew?: boolean;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';

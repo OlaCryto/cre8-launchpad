@@ -1,21 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Rocket, Zap, Users, Bell, Check, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // ============ Types ============
 
 type NotificationType = 'launch' | 'presale' | 'graduation' | 'whale' | 'system';
 
 interface Notification {
-  id: string;
+  id: number;
   type: NotificationType;
   title: string;
   body: string;
-  tokenAddress?: string;
-  tokenSymbol?: string;
-  creatorName?: string;
-  timestamp: number;
+  token_address?: string;
+  token_symbol?: string;
+  creator_name?: string;
+  created_at: string;
   read: boolean;
 }
 
@@ -38,8 +40,8 @@ const FILTER_LABELS: { key: 'all' | NotificationType; label: string }[] = [
 
 // ============ Helpers ============
 
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -49,65 +51,92 @@ function timeAgo(ts: number): string {
   return `${days}d ago`;
 }
 
+function getToken(): string | null {
+  return localStorage.getItem('cre8_session');
+}
+
 // ============ Component ============
 
 export function InboxPage() {
   const { isAuthenticated } = useAuth();
   const [filter, setFilter] = useState<'all' | NotificationType>('all');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Placeholder — will be replaced with real data from backend / on-chain events
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'launch',
-      title: 'New Token Launched',
-      body: 'A new token $EXAMPLE has been launched on the bonding curve.',
-      tokenSymbol: 'EXAMPLE',
-      tokenAddress: '0x0000000000000000000000000000000000000000',
-      creatorName: 'LogiqOS',
-      timestamp: Date.now() - 300000,
-      read: false,
-    },
-    {
-      id: '2',
-      type: 'presale',
-      title: 'Presale Starting Soon',
-      body: 'The presale for $FORGE is starting in 2 hours. Get whitelisted now.',
-      tokenSymbol: 'FORGE',
-      tokenAddress: '0x0000000000000000000000000000000000000000',
-      timestamp: Date.now() - 7200000,
-      read: false,
-    },
-    {
-      id: '3',
-      type: 'graduation',
-      title: 'Token Graduated!',
-      body: '$MOON has reached the graduation threshold and is now live on TraderJoe.',
-      tokenSymbol: 'MOON',
-      tokenAddress: '0x0000000000000000000000000000000000000000',
-      timestamp: Date.now() - 86400000,
-      read: true,
-    },
-    {
-      id: '4',
-      type: 'system',
-      title: 'Welcome to Cre8',
-      body: 'Your account is set up. Start creating tokens or browse the feed.',
-      timestamp: Date.now() - 172800000,
-      read: true,
-    },
-  ]);
+  const fetchNotifications = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications?limit=50`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data.notifications ?? []);
+        setUnreadCount(data.unread ?? 0);
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  // Initial fetch + polling every 30s
+  useEffect(() => {
+    if (!isAuthenticated) { setLoading(false); return; }
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, fetchNotifications]);
+
+  const markAllRead = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const markRead = async (id: number) => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (res.ok) {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch { /* ignore */ }
+  };
+
+  const removeNotification = async (id: number) => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const removed = notifications.find(n => n.id === id);
+        setNotifications(prev => prev.filter(n => n.id !== id));
+        if (removed && !removed.read) setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch { /* ignore */ }
+  };
 
   const filtered = filter === 'all' ? notifications : notifications.filter(n => n.type === filter);
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-
-  const markRead = (id: string) =>
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-
-  const removeNotification = (id: string) =>
-    setNotifications(prev => prev.filter(n => n.id !== id));
 
   if (!isAuthenticated) {
     return (
@@ -164,8 +193,13 @@ export function InboxPage() {
           ))}
         </div>
 
-        {/* Notifications list */}
-        {filtered.length === 0 ? (
+        {/* Loading */}
+        {loading ? (
+          <div className="text-center py-16">
+            <div className="w-6 h-6 border-2 border-cre8-red/30 border-t-cre8-red rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-dim">Loading notifications...</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-12 h-12 rounded-full bg-white/[0.04] flex items-center justify-center mx-auto mb-3">
               <Bell className="w-6 h-6 text-dim" />
@@ -176,12 +210,12 @@ export function InboxPage() {
         ) : (
           <div className="space-y-2">
             {filtered.map((notif) => {
-              const meta = TYPE_META[notif.type];
+              const meta = TYPE_META[notif.type] ?? TYPE_META.system;
               const Icon = meta.icon;
               return (
                 <div
                   key={notif.id}
-                  onClick={() => markRead(notif.id)}
+                  onClick={() => !notif.read && markRead(notif.id)}
                   className={`group relative flex items-start gap-3 p-4 rounded-xl border transition-colors cursor-pointer ${
                     notif.read
                       ? 'border-white/[0.04] bg-transparent hover:bg-white/[0.02]'
@@ -209,14 +243,14 @@ export function InboxPage() {
                       {notif.body}
                     </p>
                     <div className="flex items-center gap-3 mt-2">
-                      <span className="text-[10px] text-dim/50">{timeAgo(notif.timestamp)}</span>
-                      {notif.tokenSymbol && notif.tokenAddress && (
+                      <span className="text-[10px] text-dim/50">{timeAgo(notif.created_at)}</span>
+                      {notif.token_symbol && notif.token_address && (
                         <Link
-                          to={`/token/${notif.tokenAddress}`}
+                          to={`/token/${notif.token_address}`}
                           onClick={(e) => e.stopPropagation()}
                           className="text-[10px] text-cre8-red hover:underline font-medium"
                         >
-                          View ${notif.tokenSymbol}
+                          View ${notif.token_symbol}
                         </Link>
                       )}
                     </div>

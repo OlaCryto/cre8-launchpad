@@ -94,8 +94,16 @@ contract LaunchpadV2Test is Test {
         activityTracker.setAuthorizedTracker(address(factory), true);
         activityTracker.setAuthorizedTracker(address(router), true);
 
-        // Disable profile requirement for easier testing
+        // Disable profile requirement for Easy Launch testing
         factory.setRequireProfile(false);
+
+        // Create and verify creator profiles (required for Pro Launch)
+        vm.prank(creator1);
+        creatorRegistry.createProfile("creator1", "Creator One", "", "");
+        vm.prank(creator2);
+        creatorRegistry.createProfile("creator2", "Creator Two", "", "");
+        creatorRegistry.setVerified(creator1, true);
+        creatorRegistry.setVerified(creator2, true);
 
         // Skip past launch protection period (300 seconds) to avoid stricter limits during testing
         vm.warp(block.timestamp + 301);
@@ -104,7 +112,8 @@ contract LaunchpadV2Test is Test {
     // ============ Creator Registry Tests ============
 
     function test_CreateProfile() public {
-        vm.prank(creator1);
+        address newCreator = makeAddr("newCreator");
+        vm.prank(newCreator);
         creatorRegistry.createProfile(
             "creator_one",
             "Creator One",
@@ -112,30 +121,34 @@ contract LaunchpadV2Test is Test {
             "Building awesome tokens"
         );
 
-        assertTrue(creatorRegistry.hasProfile(creator1));
+        assertTrue(creatorRegistry.hasProfile(newCreator));
 
-        CreatorRegistry.CreatorProfile memory profile = creatorRegistry.getProfile(creator1);
+        CreatorRegistry.CreatorProfile memory profile = creatorRegistry.getProfile(newCreator);
         assertEq(profile.handle, "creator_one");
         assertEq(profile.displayName, "Creator One");
         assertTrue(profile.isActive);
     }
 
     function test_UniqueHandles() public {
-        vm.prank(creator1);
+        address newCreator1 = makeAddr("handleTest1");
+        address newCreator2 = makeAddr("handleTest2");
+        vm.prank(newCreator1);
         creatorRegistry.createProfile("unique_handle", "Creator 1", "", "");
 
         vm.expectRevert();
-        vm.prank(creator2);
+        vm.prank(newCreator2);
         creatorRegistry.createProfile("unique_handle", "Creator 2", "", "");
     }
 
     function test_HandleCaseInsensitive() public {
-        vm.prank(creator1);
+        address newCreator1 = makeAddr("caseTest1");
+        address newCreator2 = makeAddr("caseTest2");
+        vm.prank(newCreator1);
         creatorRegistry.createProfile("MyHandle", "Creator 1", "", "");
 
         // Same handle different case should fail
         vm.expectRevert();
-        vm.prank(creator2);
+        vm.prank(newCreator2);
         creatorRegistry.createProfile("myhandle", "Creator 2", "", "");
     }
 
@@ -610,6 +623,11 @@ contract GasOptimizationTest is Test {
         creatorRegistry.setFactory(address(factory));
         factory.setRequireProfile(false);
         activityTracker.setAuthorizedTracker(address(factory), true);
+
+        // Create and verify creator profile (required for Pro Launch)
+        vm.prank(creator);
+        creatorRegistry.createProfile("gasCreator", "Gas Creator", "", "");
+        creatorRegistry.setVerified(creator, true);
 
         // Skip past launch protection period
         vm.warp(block.timestamp + 301);

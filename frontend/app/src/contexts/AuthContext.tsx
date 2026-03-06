@@ -41,6 +41,8 @@ interface AuthContextType extends AuthState {
   showPrivateKey: () => string | null;
   /** Called by AuthCallbackPage after X redirects back */
   handleAuthCallback: (sessionToken: string) => Promise<void>;
+  /** Dev-only: bypass X OAuth for local testing */
+  devLogin: () => Promise<void>;
 }
 
 // ============ API helper ============
@@ -178,6 +180,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return state.user?.wallet.privateKey ?? null;
   };
 
+  /** Dev-only login — bypasses X OAuth */
+  const devLogin = async () => {
+    setState(s => ({ ...s, isLoading: true }));
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/dev-login`, { method: 'POST' });
+      if (!res.ok) throw new Error('Dev login not available');
+      const { session } = await res.json();
+      await handleAuthCallback(session);
+    } catch (err) {
+      console.error('Dev login failed:', err);
+      setState(s => ({ ...s, isLoading: false }));
+      throw err;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       ...state,
@@ -186,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateCreatorProfile,
       showPrivateKey,
       handleAuthCallback,
+      devLogin,
     }}>
       {children}
     </AuthContext.Provider>

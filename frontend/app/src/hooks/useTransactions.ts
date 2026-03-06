@@ -82,6 +82,7 @@ export function useCreateTokenAndBuy() {
     telegram: string;
     website: string;
     creatorBuyBps: number;
+    creatorBuyAvax: number;
   }) => {
     if (!wallet) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
@@ -92,8 +93,10 @@ export function useCreateTokenAndBuy() {
 
       const safeImageURI = params.imageURI.startsWith('data:') ? '' : params.imageURI;
 
-      // msg.value = creation fee + any AVAX for the creator buy
-      const buyAvax = params.creatorBuyBps > 0 ? parseEther('0.01') : 0n;
+      // msg.value = creation fee + actual AVAX amount from the slider
+      const buyAvax = params.creatorBuyBps > 0 && params.creatorBuyAvax > 0
+        ? parseEther(params.creatorBuyAvax.toString())
+        : 0n;
       const totalValue = CREATION_FEE + buyAvax;
 
       const hash = await wallet.walletClient.writeContract({

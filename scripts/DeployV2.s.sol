@@ -12,6 +12,7 @@ import {LiquidityManager} from "../contracts/core/LiquidityManager.sol";
 import {CreatorRegistry} from "../contracts/core/CreatorRegistry.sol";
 import {ActivityTracker} from "../contracts/core/ActivityTracker.sol";
 import {LaunchpadRouterV2} from "../contracts/router/LaunchpadRouterV2.sol";
+import {LaunchManager} from "../contracts/forge/LaunchManager.sol";
 
 /**
  * @title DeployV2
@@ -43,6 +44,7 @@ contract DeployV2Script is Script {
     FeeManager public feeManager;
     LaunchpadFactoryV2 public factory;
     LaunchpadRouterV2 public router;
+    LaunchManager public launchManager;
 
     // Configuration
     address public treasury;
@@ -139,8 +141,14 @@ contract DeployV2Script is Script {
         );
         console.log("LaunchpadRouterV2:", address(router));
 
-        // 9. Configure all contracts
-        console.log("\n--- Step 9: Configuration ---");
+        // 9. Deploy LaunchManager (Forge Mode)
+        console.log("\n--- Step 9: LaunchManager ---");
+
+        launchManager = new LaunchManager(address(factory), address(creatorRegistry));
+        console.log("LaunchManager:", address(launchManager));
+
+        // 10. Configure all contracts
+        console.log("\n--- Step 10: Configuration ---");
 
         // Configure Factory
         factory.setRouter(address(router));
@@ -171,6 +179,10 @@ contract DeployV2Script is Script {
         activityTracker.setAuthorizedTracker(address(router), true);
         console.log("ActivityTracker configured");
 
+        // Configure LaunchManager ↔ Factory
+        factory.setLaunchManager(address(launchManager));
+        console.log("LaunchManager configured");
+
         vm.stopBroadcast();
 
         // Print deployment summary
@@ -197,6 +209,7 @@ contract DeployV2Script is Script {
         console.log("Platform Contracts:");
         console.log("  CreatorRegistry:", address(creatorRegistry));
         console.log("  ActivityTracker:", address(activityTracker));
+        console.log("  LaunchManager:  ", address(launchManager));
         console.log("");
         console.log("Configuration:");
         console.log("  Treasury:       ", treasury);

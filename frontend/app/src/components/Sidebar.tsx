@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -7,7 +7,8 @@ import {
   IconUser,
   IconWallet,
   IconBriefcase,
-  IconShield,
+  IconInbox,
+  IconLayoutDashboard,
   IconKey,
   IconLogout,
   IconAlertTriangle,
@@ -20,18 +21,46 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export function Sidebar() {
   const location = useLocation();
-  const { user, isAuthenticated, isLoading, signInWithX, signOut } = useAuth();
+  const { user, isAuthenticated, isLoading, signInWithX, signOut, devLogin } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [pkModal, setPkModal] = useState<'closed' | 'warning' | 'revealed'>('closed');
   const [pkCopied, setPkCopied] = useState(false);
   const [pkVisible, setPkVisible] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Poll for unread notification count
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchUnread = async () => {
+      try {
+        const token = localStorage.getItem('cre8_session');
+        if (!token) return;
+        const res = await fetch(`${API_BASE}/api/notifications?limit=1`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadCount(data.unread ?? 0);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   const navItems = [
     { path: '/', icon: IconHome, label: 'Home' },
     { path: '/create', icon: IconPlus, label: 'Create' },
     { path: '/portfolio', icon: IconBriefcase, label: 'Portfolio' },
-    ...(isAuthenticated ? [{ path: '/creator/apply', icon: IconShield, label: 'Creator' }] : []),
+    ...(isAuthenticated ? [
+      { path: '/inbox', icon: IconInbox, label: 'Inbox', badge: unreadCount },
+      { path: '/creator/dashboard', icon: IconLayoutDashboard, label: 'Forge' },
+    ] : []),
   ];
 
   const handleSignIn = async () => {
@@ -42,6 +71,17 @@ export function Sidebar() {
       toast.error('Failed to sign in. Try again.');
     }
   };
+
+  const handleDevLogin = async () => {
+    try {
+      await devLogin();
+      toast.success('Dev login successful!');
+    } catch {
+      toast.error('Dev login failed.');
+    }
+  };
+
+  const isDev = import.meta.env.DEV;
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -79,6 +119,11 @@ export function Sidebar() {
                 <Icon size={20} stroke={isActive ? 2 : 1.5} />
                 {isActive && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-cre8-red rounded-r-full" />
+                )}
+                {'badge' in item && (item as any).badge > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-cre8-red text-white text-[9px] font-bold flex items-center justify-center">
+                    {(item as any).badge > 99 ? '99+' : (item as any).badge}
+                  </span>
                 )}
               </Link>
             );
@@ -158,18 +203,30 @@ export function Sidebar() {
               )}
             </div>
           ) : (
-            <button
-              onClick={handleSignIn}
-              disabled={isLoading}
-              title="Sign In"
-              className="w-10 h-10 rounded-xl flex items-center justify-center bg-cre8-red/15 text-cre8-red hover:bg-cre8-red/25 transition-colors"
-            >
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-cre8-red/30 border-t-cre8-red rounded-full animate-spin" />
-              ) : (
-                <IconUser size={20} stroke={1.5} />
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                onClick={handleSignIn}
+                disabled={isLoading}
+                title="Sign In"
+                className="w-10 h-10 rounded-xl flex items-center justify-center bg-cre8-red/15 text-cre8-red hover:bg-cre8-red/25 transition-colors"
+              >
+                {isLoading ? (
+                  <div className="w-4 h-4 border-2 border-cre8-red/30 border-t-cre8-red rounded-full animate-spin" />
+                ) : (
+                  <IconUser size={20} stroke={1.5} />
+                )}
+              </button>
+              {isDev && (
+                <button
+                  onClick={handleDevLogin}
+                  disabled={isLoading}
+                  title="Dev Login (bypass X)"
+                  className="w-10 h-7 rounded-lg flex items-center justify-center bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors text-[9px] font-bold"
+                >
+                  DEV
+                </button>
               )}
-            </button>
+            </div>
           )}
         </div>
       </aside>
@@ -186,12 +243,17 @@ export function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex flex-col items-center gap-0.5 px-3 py-1.5 ${
+                className={`relative flex flex-col items-center gap-0.5 px-3 py-1.5 ${
                   isActive ? 'text-cre8-red' : 'text-dim'
                 }`}
               >
                 <Icon size={20} stroke={isActive ? 2 : 1.5} />
                 <span className="text-[10px] font-medium">{item.label}</span>
+                {'badge' in item && (item as any).badge > 0 && (
+                  <span className="absolute top-0 right-1 min-w-[14px] h-3.5 px-0.5 rounded-full bg-cre8-red text-white text-[8px] font-bold flex items-center justify-center">
+                    {(item as any).badge > 99 ? '99+' : (item as any).badge}
+                  </span>
+                )}
               </Link>
             );
           })}
