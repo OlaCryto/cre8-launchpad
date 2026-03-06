@@ -2,6 +2,7 @@ import { Component, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './contexts/AuthContext';
 import { Sidebar } from './components/Sidebar';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -111,6 +112,7 @@ function App() {
             <AppRoutes />
           </Router>
           <Toaster />
+          <Analytics />
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
