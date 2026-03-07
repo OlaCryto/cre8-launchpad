@@ -153,13 +153,13 @@ contract BondingCurveV2 is
         state = CurveState.Trading;
         tradingPair = address(0); // AVAX by default
 
-        // Initialize anti-bot with default settings
+        // Anti-bot disabled — Router is msg.sender so checks don't work correctly
         _initAntiBot(AntiBotConfig({
-            enabled: true,
-            cooldownPeriod: 30,
-            maxTxAmountBps: 2000,
-            maxWalletAmountBps: 5000,
-            launchProtectionTime: 300
+            enabled: false,
+            cooldownPeriod: 0,
+            maxTxAmountBps: 0,
+            maxWalletAmountBps: 0,
+            launchProtectionTime: 0
         }));
     }
 
@@ -194,11 +194,11 @@ contract BondingCurveV2 is
         state = CurveState.Trading;
 
         _initAntiBot(AntiBotConfig({
-            enabled: true,
-            cooldownPeriod: 30,
-            maxTxAmountBps: 2000,
-            maxWalletAmountBps: 5000,
-            launchProtectionTime: 300
+            enabled: false,
+            cooldownPeriod: 0,
+            maxTxAmountBps: 0,
+            maxWalletAmountBps: 0,
+            launchProtectionTime: 0
         }));
 
         // Execute creator initial buy if specified and AVAX sent
@@ -288,15 +288,6 @@ contract BondingCurveV2 is
             if (tokensOut == 0) revert LaunchpadErrors.MaxSupplyReached();
         }
 
-        // Anti-bot checks
-        _checkAntiBot(msg.sender, tokensOut, curveParams.maxSupply, true);
-        _checkMaxWallet(
-            msg.sender,
-            IERC20(token).balanceOf(msg.sender),
-            tokensOut,
-            curveParams.maxSupply
-        );
-
         // Update state
         currentSupply += tokensOut;
         reserveBalance += msg.value;
@@ -345,9 +336,6 @@ contract BondingCurveV2 is
 
         if (avaxOut < minAvaxOut) revert LaunchpadErrors.SlippageExceeded();
         if (avaxOut > reserveBalance) revert LaunchpadErrors.InsufficientReserve();
-
-        // Anti-bot checks
-        _checkAntiBot(msg.sender, tokenAmount, curveParams.maxSupply, false);
 
         // Update state
         currentSupply -= tokenAmount;
