@@ -1,20 +1,23 @@
 /**
- * Contract hooks — read from deployed Fuji contracts via viem.
+ * Contract hooks — read from Cre8Manager (UUPS proxy) via viem.
+ * Single-contract architecture: all reads go to one address.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { type Address, formatEther, parseEther } from 'viem';
 import { publicClient } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
-import { LaunchpadFactoryABI, BondingCurveABI, LaunchpadRouterABI, ERC20ABI, TokenMetadataABI, LaunchManagerABI, TokensPurchasedEvent, TokensSoldEvent, TransferEvent, SwapExecutedEvent } from '@/config/abis';
+import { Cre8ManagerABI, BuyEvent, SellEvent, ERC20ABI, TransferEvent } from '@/config/abis';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
+const managerAddress = contracts.Cre8Manager as Address;
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // ============ Types ============
 
 export interface TokenLaunchInfo {
   tokenAddress: string;
-  bondingCurve: string;
+  tokenId: bigint;
   creator: string;
   createdAt: number;
   currentPrice: number;
@@ -43,11 +46,9 @@ export interface TradeActivity {
   traderAvatar?: string;
   avaxAmount: number;
   tokenAmount: number;
-  /** Price after this trade. Available on per-token trades (BondingCurve events) but not on global SwapExecuted feed. */
   newPrice?: number;
   timestamp: number;
   txHash: string;
-  /** True for trades that just appeared via live polling */
   isNew?: boolean;
 }
 
@@ -62,6 +63,7 @@ export interface TokenHolder {
 /** Lightweight token summary for lists (Explore, Home) */
 export interface OnChainToken {
   address: string;
+  tokenId: bigint;
   name: string;
   symbol: string;
   creator: string;
@@ -75,9 +77,66 @@ export interface OnChainToken {
   isForgeToken: boolean;
 }
 
+// ============ Helpers ============
+
+/** Fetch token metadata (description, socials, image) from backend */
+async function fetchTokenMetadata(tokenAddress: string): Promise<{
+  description: string; imageURI: string; twitter: string; telegram: string; website: string;
+}> {
+  const defaults = { description: '', imageURI: '', twitter: '', telegram: '', website: '' };
+  try {
+    const res = await fetch(`${API_BASE}/api/tokens/${tokenAddress.toLowerCase()}/creator`);
+    if (!res.ok) return defaults;
+    const data = await res.json();
+    return {
+      description: data.description || '',
+      imageURI: data.image_url || '',
+      twitter: data.twitter || '',
+      telegram: data.telegram || '',
+      website: data.website || '',
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+/** Check if a token has a whitelist (Forge Mode) by checking whitelistConfig endTime */
+async function checkIsForgeToken(tokenId: bigint): Promise<boolean> {
+  try {
+    const result = await publicClient.readContract({
+      address: managerAddress,
+      abi: Cre8ManagerABI,
+      functionName: 'isWhitelistActive',
+      args: [tokenId],
+    });
+    // If it was ever a forge token, whitelistConfig.endTime > 0
+    // But isWhitelistActive only returns true during WL phase
+    // We can't easily distinguish "was forge" vs "easy" after WL ends
+    // For now, treat active whitelist as forge
+    return result as boolean;
+  } catch {
+    return false;
+  }
+}
+
+/** Batch-resolve wallet addresses -> user profiles from backend */
+async function resolveWalletUsers(
+  addresses: string[],
+): Promise<Record<string, { handle: string; name: string; avatar: string }>> {
+  if (addresses.length === 0) return {};
+  try {
+    const unique = [...new Set(addresses.map(a => a.toLowerCase()))];
+    const res = await fetch(`${API_BASE}/api/users/by-wallet?addresses=${unique.join(',')}`);
+    if (!res.ok) return {};
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+
 // ============ Hooks ============
 
-/** Load all tokens from the on-chain Factory + read metadata */
+/** Load all tokens from Cre8Manager */
 export function useOnChainTokens() {
   const [tokens, setTokens] = useState<OnChainToken[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,11 +146,10 @@ export function useOnChainTokens() {
 
     async function load() {
       try {
-        // 1. Get total token count
         const count = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getTokenCount',
+          address: managerAddress,
+          abi: Cre8ManagerABI,
+          functionName: 'tokenCount',
         }) as bigint;
 
         if (cancelled) return;
@@ -102,91 +160,49 @@ export function useOnChainTokens() {
           return;
         }
 
-        // 2. Get all token addresses in pages of 50
-        const PAGE_SIZE = 50n;
-        const addresses: string[] = [];
-        for (let offset = 0n; offset < count; offset += PAGE_SIZE) {
-          const end = offset + PAGE_SIZE > count ? count : offset + PAGE_SIZE;
-          const page = await publicClient.readContract({
-            address: contracts.LaunchpadFactory as Address,
-            abi: LaunchpadFactoryABI,
-            functionName: 'getTokens',
-            args: [offset, end],
-          }) as string[];
-          addresses.push(...page);
-        }
+        // Read all tokens in parallel (tokenIds are 1-based)
+        const tokenIds = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1));
 
-        if (cancelled) return;
-
-        // 3. For each token, read metadata in parallel
         const results = await Promise.allSettled(
-          addresses.map(async (addr) => {
-            const [launchInfo, name, symbol, tokenMeta, isForge] = await Promise.all([
-              publicClient.readContract({
-                address: contracts.LaunchpadFactory as Address,
-                abi: LaunchpadFactoryABI,
-                functionName: 'getLaunchInfo',
-                args: [addr as Address],
-              }),
-              publicClient.readContract({
-                address: addr as Address,
-                abi: ERC20ABI,
-                functionName: 'name',
-              }),
-              publicClient.readContract({
-                address: addr as Address,
-                abi: ERC20ABI,
-                functionName: 'symbol',
-              }),
-              publicClient.readContract({
-                address: addr as Address,
-                abi: TokenMetadataABI,
-                functionName: 'metadata',
-              }).catch(() => null),
-              contracts.LaunchManager ? publicClient.readContract({
-                address: contracts.LaunchManager as Address,
-                abi: LaunchManagerABI,
-                functionName: 'isForgeToken',
-                args: [addr as Address],
-              }).catch(() => false) : Promise.resolve(false),
+          tokenIds.map(async (tokenId) => {
+            const info = await publicClient.readContract({
+              address: managerAddress,
+              abi: Cre8ManagerABI,
+              functionName: 'getTokenInfo',
+              args: [tokenId],
+            }) as any;
+
+            const tokenAddr = info[0] as string;
+
+            // Fetch metadata from backend (fire in parallel)
+            const [meta, isForge] = await Promise.all([
+              fetchTokenMetadata(tokenAddr),
+              checkIsForgeToken(tokenId),
             ]);
 
-            const curveAddress = (launchInfo as any).bondingCurve;
-
-            // Read bonding curve data
-            const [currentPrice, reserveBalance, graduationProgressBps] = await Promise.all([
-              publicClient.readContract({
-                address: curveAddress as Address,
-                abi: BondingCurveABI,
-                functionName: 'getCurrentPrice',
-              }),
-              publicClient.readContract({
-                address: curveAddress as Address,
-                abi: BondingCurveABI,
-                functionName: 'reserveBalance',
-              }),
-              publicClient.readContract({
-                address: curveAddress as Address,
-                abi: BondingCurveABI,
-                functionName: 'getGraduationProgress',
-              }),
-            ]);
-
-            const reserveAvax = Number(formatEther(reserveBalance as bigint));
+            // Check for image in backend
+            let imageURI = meta.imageURI;
+            if (!imageURI) {
+              try {
+                const imgRes = await fetch(`${API_BASE}/api/images/${tokenAddr.toLowerCase()}`);
+                if (imgRes.ok) imageURI = `${API_BASE}/api/images/${tokenAddr.toLowerCase()}`;
+              } catch { /* no image */ }
+            }
 
             return {
-              address: addr,
-              name: name as string,
-              symbol: symbol as string,
-              creator: (launchInfo as any).creator,
-              createdAt: Number((launchInfo as any).createdAt),
-              currentPrice: Number(formatEther(currentPrice as bigint)),
-              reserveBalance: reserveAvax,
-              graduationProgress: Number(graduationProgressBps as bigint) / 100,
-              isGraduated: (launchInfo as any).isGraduated,
-              imageURI: (tokenMeta as any)?.imageURI || '',
-              description: (tokenMeta as any)?.description || '',
-              isForgeToken: !!isForge,
+              address: tokenAddr,
+              tokenId,
+              name: info[2] as string,
+              symbol: info[3] as string,
+              creator: info[1] as string,
+              createdAt: 0, // Not returned by getTokenInfo; use backend data if needed
+              currentPrice: Number(formatEther(info[6] as bigint)),
+              reserveBalance: Number(formatEther(info[5] as bigint)),
+              graduationProgress: Number(info[8] as bigint) / 100, // bps to %
+              isGraduated: info[9] as boolean,
+              imageURI,
+              description: meta.description,
+              isForgeToken: isForge,
             } as OnChainToken;
           })
         );
@@ -196,7 +212,7 @@ export function useOnChainTokens() {
         const loaded = results
           .filter((r): r is PromiseFulfilledResult<OnChainToken> => r.status === 'fulfilled')
           .map((r) => r.value)
-          .sort((a, b) => b.createdAt - a.createdAt); // newest first
+          .reverse(); // newest first (higher tokenId = newer)
 
         setTokens(loaded);
       } catch (err) {
@@ -213,7 +229,7 @@ export function useOnChainTokens() {
   return { tokens, isLoading };
 }
 
-/** Get token launch info from Factory + BondingCurve */
+/** Get token launch info from Cre8Manager by token address */
 export function useTokenLaunch(tokenAddress: string | undefined) {
   const [data, setData] = useState<TokenLaunchInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -223,73 +239,60 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
 
     let cancelled = false;
 
-    async function fetch() {
+    async function load() {
       try {
-        const launchInfo = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getLaunchInfo',
+        // Look up tokenId from address
+        const tokenId = await publicClient.readContract({
+          address: managerAddress,
+          abi: Cre8ManagerABI,
+          functionName: 'getTokenByAddress',
           args: [tokenAddress as Address],
-        });
+        }) as bigint;
 
         if (cancelled) return;
 
-        const curveAddress = (launchInfo as any).bondingCurve;
-
-        const [currentPrice, reserveBalance, tokensSold, curveState, graduationProgressBps, tokenMeta] = await Promise.all([
+        // Read token info + metadata in parallel
+        const [info, meta] = await Promise.all([
           publicClient.readContract({
-            address: curveAddress as Address,
-            abi: BondingCurveABI,
-            functionName: 'getCurrentPrice',
+            address: managerAddress,
+            abi: Cre8ManagerABI,
+            functionName: 'getTokenInfo',
+            args: [tokenId],
           }),
-          publicClient.readContract({
-            address: curveAddress as Address,
-            abi: BondingCurveABI,
-            functionName: 'reserveBalance',
-          }),
-          publicClient.readContract({
-            address: curveAddress as Address,
-            abi: BondingCurveABI,
-            functionName: 'currentSupply',
-          }),
-          publicClient.readContract({
-            address: curveAddress as Address,
-            abi: BondingCurveABI,
-            functionName: 'state',
-          }),
-          publicClient.readContract({
-            address: curveAddress as Address,
-            abi: BondingCurveABI,
-            functionName: 'getGraduationProgress',
-          }),
-          publicClient.readContract({
-            address: tokenAddress as Address,
-            abi: TokenMetadataABI,
-            functionName: 'metadata',
-          }).catch(() => null),
+          fetchTokenMetadata(tokenAddress),
         ]);
 
         if (cancelled) return;
 
-        const reserveAvax = Number(formatEther(reserveBalance as bigint));
-        const progress = Number(graduationProgressBps as bigint) / 100;
+        const i = info as any;
+        const reserveAvax = Number(formatEther(i[5] as bigint));
+        const progress = Number(i[8] as bigint) / 100;
+
+        // Check for image in backend
+        let imageURI = meta.imageURI;
+        if (!imageURI) {
+          try {
+            const imgRes = await fetch(`${API_BASE}/api/images/${tokenAddress.toLowerCase()}`);
+            if (imgRes.ok) imageURI = `${API_BASE}/api/images/${tokenAddress.toLowerCase()}`;
+          } catch { /* no image */ }
+        }
 
         setData({
           tokenAddress: tokenAddress!,
-          bondingCurve: curveAddress as string,
-          creator: (launchInfo as any).creator,
-          createdAt: Number((launchInfo as any).createdAt),
-          currentPrice: Number(formatEther(currentPrice as bigint)),
+          tokenId,
+          creator: i[1] as string,
+          createdAt: 0, // use backend if needed
+          currentPrice: Number(formatEther(i[6] as bigint)),
           reserveBalance: reserveAvax,
-          tokensSold: tokensSold as bigint,
+          tokensSold: i[4] as bigint,
           graduationProgress: progress,
-          isGraduated: (launchInfo as any).isGraduated || curveState === 2,
-          tradingEnabled: curveState === 0,
-          imageURI: (tokenMeta as any)?.imageURI || '',
-          description: (tokenMeta as any)?.description || '',
-          twitter: (tokenMeta as any)?.twitter || '',
-          telegram: (tokenMeta as any)?.telegram || '',
-          website: (tokenMeta as any)?.website || '',
+          isGraduated: i[9] as boolean,
+          tradingEnabled: !(i[9] as boolean),
+          imageURI,
+          description: meta.description,
+          twitter: meta.twitter,
+          telegram: meta.telegram,
+          website: meta.website,
         });
       } catch (err) {
         console.error('[useTokenLaunch] failed for', tokenAddress, err);
@@ -299,14 +302,14 @@ export function useTokenLaunch(tokenAddress: string | undefined) {
       }
     }
 
-    fetch();
+    load();
     return () => { cancelled = true; };
   }, [tokenAddress]);
 
   return { data, isLoading };
 }
 
-/** Get bonding curve price quote for buy/sell */
+/** Get bonding curve price quote from Cre8Manager */
 export function useBondingCurveQuote(
   tokenAddress: string | undefined,
   avaxAmount: number,
@@ -322,73 +325,81 @@ export function useBondingCurveQuote(
 
     let cancelled = false;
 
-    async function fetch() {
+    async function load() {
       try {
+        // Resolve tokenId first
+        const tokenId = await publicClient.readContract({
+          address: managerAddress,
+          abi: Cre8ManagerABI,
+          functionName: 'getTokenByAddress',
+          args: [tokenAddress as Address],
+        }) as bigint;
+
         const amountWei = parseEther(avaxAmount.toString());
 
         if (isBuy) {
           const result = await publicClient.readContract({
-            address: contracts.LaunchpadRouter as Address,
-            abi: LaunchpadRouterABI,
-            functionName: 'getQuoteBuy',
-            args: [tokenAddress as Address, amountWei],
-          });
+            address: managerAddress,
+            abi: Cre8ManagerABI,
+            functionName: 'getBuyQuote',
+            args: [tokenId, amountWei],
+          }) as any;
 
           if (!cancelled) {
             setQuote({
-              tokensOut: Number(formatEther((result as any)[0])),
-              priceImpact: Number((result as any)[2]) / 100,
-              fee: Number(formatEther((result as any)[1])),
+              tokensOut: Number(formatEther(result[0] as bigint)),
+              priceImpact: 0, // Not returned by new contract
+              fee: Number(formatEther(result[1] as bigint)),
             });
           }
         } else {
+          // For sell, avaxAmount is actually token amount
           const tokenAmountWei = parseEther(avaxAmount.toString());
           const result = await publicClient.readContract({
-            address: contracts.LaunchpadRouter as Address,
-            abi: LaunchpadRouterABI,
-            functionName: 'getQuoteSell',
-            args: [tokenAddress as Address, tokenAmountWei],
-          });
+            address: managerAddress,
+            abi: Cre8ManagerABI,
+            functionName: 'getSellQuote',
+            args: [tokenId, tokenAmountWei],
+          }) as any;
 
           if (!cancelled) {
             setQuote({
-              tokensOut: Number(formatEther((result as any)[0])),
-              priceImpact: Number((result as any)[2]) / 100,
-              fee: Number(formatEther((result as any)[1])),
+              tokensOut: Number(formatEther(result[0] as bigint)),
+              priceImpact: 0,
+              fee: Number(formatEther(result[1] as bigint)),
             });
           }
         }
       } catch {
-        // Quote unavailable — leave null
         if (!cancelled) setQuote(null);
       }
     }
 
-    const debounce = setTimeout(fetch, 300);
+    const debounce = setTimeout(load, 300);
     return () => { cancelled = true; clearTimeout(debounce); };
   }, [tokenAddress, avaxAmount, isBuy]);
 
   return quote;
 }
 
-/** Get token count from factory */
+/** Get token count from Cre8Manager */
 export function useTokenCount() {
   const [count, setCount] = useState<number>(0);
 
   useEffect(() => {
-    async function fetch() {
+    async function load() {
       try {
         const result = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getTokenCount',
+          address: managerAddress,
+          abi: Cre8ManagerABI,
+          functionName: 'tokenCount',
         });
         setCount(Number(result));
       } catch {
         setCount(0);
       }
     }
-    fetch();
+    load();
   }, []);
 
   return count;
@@ -403,19 +414,17 @@ export function useAvaxBalance(address: string | undefined) {
 
     let cancelled = false;
 
-    async function fetch() {
+    async function load() {
       try {
-        const bal = await publicClient.getBalance({
-          address: address as Address,
-        });
+        const bal = await publicClient.getBalance({ address: address as Address });
         if (!cancelled) setBalance(Number(formatEther(bal)));
       } catch {
         if (!cancelled) setBalance(0);
       }
     }
 
-    fetch();
-    const interval = setInterval(fetch, 15000); // refresh every 15s
+    load();
+    const interval = setInterval(load, 15000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [address]);
 
@@ -430,7 +439,7 @@ export function useTokenBalance(tokenAddress: string | undefined, userAddress: s
     if (!tokenAddress || !userAddress) { setBalance(0n); return; }
     let cancelled = false;
 
-    async function fetch() {
+    async function load() {
       try {
         const bal = await publicClient.readContract({
           address: tokenAddress as Address,
@@ -444,20 +453,21 @@ export function useTokenBalance(tokenAddress: string | undefined, userAddress: s
       }
     }
 
-    fetch();
+    load();
     return () => { cancelled = true; };
   }, [tokenAddress, userAddress]);
 
   return balance;
 }
 
-/** Parse buy/sell event logs into TradeActivity objects */
+// ============ Trade Activity ============
+
+/** Parse Buy/Sell event logs from Cre8Manager into TradeActivity */
 async function parseTradeLogs(
   buyLogs: any[],
   sellLogs: any[],
   existingTimestamps?: Map<bigint, number>,
 ): Promise<{ trades: TradeActivity[]; timestamps: Map<bigint, number> }> {
-  // Collect unique block numbers we haven't resolved yet
   const blockNumbers = new Set<bigint>();
   for (const log of [...buyLogs, ...sellLogs]) {
     if (log.blockNumber && (!existingTimestamps || !existingTimestamps.has(log.blockNumber))) {
@@ -528,40 +538,37 @@ async function enrichTradesWithUsers(
   });
 }
 
-/** Get trade activity (buy/sell events) with live polling for new trades */
+/** Get trade activity (Buy/Sell events from Cre8Manager) with live polling */
 export function useTradeActivity(tokenAddress: string | undefined) {
   const [trades, setTrades] = useState<TradeActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const curveRef = useRef<Address | null>(null);
+  const tokenIdRef = useRef<bigint>(0n);
   const lastBlockRef = useRef<bigint>(0n);
   const timestampsRef = useRef<Map<bigint, number>>(new Map());
   const knownTxHashes = useRef<Set<string>>(new Set());
   const userCacheRef = useRef<Record<string, { handle: string; name: string; avatar: string }>>({});
 
-  // Initial load — fetch all historical trades
+  // Initial load
   useEffect(() => {
     if (!tokenAddress) { setIsLoading(false); return; }
     let cancelled = false;
 
     async function load() {
       try {
-        const launchInfo = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getLaunchInfo',
+        // Look up tokenId
+        const tokenId = await publicClient.readContract({
+          address: managerAddress,
+          abi: Cre8ManagerABI,
+          functionName: 'getTokenByAddress',
           args: [tokenAddress as Address],
-        });
+        }) as bigint;
 
         if (cancelled) return;
-
-        const curveAddress = (launchInfo as any).bondingCurve as Address;
-        const creatorAddr = (launchInfo as any).creator as string;
-        curveRef.current = curveAddress;
-        const createdAt = Number((launchInfo as any).createdAt);
+        tokenIdRef.current = tokenId;
 
         const currentBlock = await publicClient.getBlockNumber();
 
-        // Try exact creation block from backend, fall back to generous time estimate
+        // Try exact creation block from backend, fall back to generous estimate
         let startBlock: bigint;
         try {
           const creatorRes = await fetch(`${API_BASE}/api/tokens/${tokenAddress}/creator`);
@@ -576,10 +583,8 @@ export function useTradeActivity(tokenAddress: string | undefined) {
             throw new Error('not found');
           }
         } catch {
-          const now = Math.floor(Date.now() / 1000);
-          const secondsAgo = Math.max(now - createdAt, 0);
-          const blocksAgo = BigInt(Math.ceil(secondsAgo / 2)) + 5000n;
-          startBlock = currentBlock > blocksAgo ? currentBlock - blocksAgo : 0n;
+          // Generous fallback: ~2.5 hours at 2s/block
+          startBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
         }
 
         if (cancelled) return;
@@ -591,11 +596,24 @@ export function useTradeActivity(tokenAddress: string | undefined) {
           ranges.push({ from, to: from + CHUNK > currentBlock ? currentBlock : from + CHUNK });
         }
 
+        // Query Buy and Sell events from Cre8Manager, filtered by tokenId (indexed param)
         const results = await Promise.all(
           ranges.map(({ from, to }) =>
             Promise.all([
-              publicClient.getLogs({ address: curveAddress, event: TokensPurchasedEvent, fromBlock: from, toBlock: to }),
-              publicClient.getLogs({ address: curveAddress, event: TokensSoldEvent, fromBlock: from, toBlock: to }),
+              publicClient.getLogs({
+                address: managerAddress,
+                event: BuyEvent,
+                args: { tokenId },
+                fromBlock: from,
+                toBlock: to,
+              }),
+              publicClient.getLogs({
+                address: managerAddress,
+                event: SellEvent,
+                args: { tokenId },
+                fromBlock: from,
+                toBlock: to,
+              }),
             ])
           )
         );
@@ -605,23 +623,12 @@ export function useTradeActivity(tokenAddress: string | undefined) {
         const allBuyLogs = results.flatMap(([buys]) => buys);
         const allSellLogs = results.flatMap(([, sells]) => sells);
 
-        if (cancelled) return;
-
-        const { trades: parsedTrades, timestamps } = await parseTradeLogs(allBuyLogs, allSellLogs);
-
-        // Fix: Factory-initiated creator buys show Factory as trader — replace with actual creator
-        const factoryAddr = contracts.LaunchpadFactory.toLowerCase();
-        const allTrades = parsedTrades.map(t =>
-          t.trader.toLowerCase() === factoryAddr ? { ...t, trader: creatorAddr } : t
-        );
+        const { trades: allTrades, timestamps } = await parseTradeLogs(allBuyLogs, allSellLogs);
 
         timestampsRef.current = timestamps;
         lastBlockRef.current = currentBlock;
-
-        // Track known tx hashes
         for (const t of allTrades) knownTxHashes.current.add(t.txHash);
 
-        // Enrich with user names
         const enriched = await enrichTradesWithUsers(allTrades, userCacheRef.current);
 
         if (!cancelled) setTrades(enriched);
@@ -643,21 +650,33 @@ export function useTradeActivity(tokenAddress: string | undefined) {
     let cancelled = false;
 
     const interval = setInterval(async () => {
-      if (!curveRef.current || lastBlockRef.current === 0n) return;
+      if (tokenIdRef.current === 0n || lastBlockRef.current === 0n) return;
 
       try {
         const currentBlock = await publicClient.getBlockNumber();
         if (currentBlock <= lastBlockRef.current) return;
 
         const fromBlock = lastBlockRef.current + 1n;
+        const tokenId = tokenIdRef.current;
 
         const [buyLogs, sellLogs] = await Promise.all([
-          publicClient.getLogs({ address: curveRef.current, event: TokensPurchasedEvent, fromBlock, toBlock: currentBlock }),
-          publicClient.getLogs({ address: curveRef.current, event: TokensSoldEvent, fromBlock, toBlock: currentBlock }),
+          publicClient.getLogs({
+            address: managerAddress,
+            event: BuyEvent,
+            args: { tokenId },
+            fromBlock,
+            toBlock: currentBlock,
+          }),
+          publicClient.getLogs({
+            address: managerAddress,
+            event: SellEvent,
+            args: { tokenId },
+            fromBlock,
+            toBlock: currentBlock,
+          }),
         ]);
 
         lastBlockRef.current = currentBlock;
-
         if (buyLogs.length === 0 && sellLogs.length === 0) return;
 
         const { trades: newTrades, timestamps } = await parseTradeLogs(
@@ -665,7 +684,6 @@ export function useTradeActivity(tokenAddress: string | undefined) {
         );
         timestampsRef.current = timestamps;
 
-        // Filter out any we already have & mark as new
         let fresh: TradeActivity[] = newTrades
           .filter((t) => !knownTxHashes.current.has(t.txHash))
           .map((t): TradeActivity => ({ ...t, isNew: true }));
@@ -673,12 +691,10 @@ export function useTradeActivity(tokenAddress: string | undefined) {
         if (fresh.length === 0) return;
         for (const t of fresh) knownTxHashes.current.add(t.txHash);
 
-        // Enrich with user names
         fresh = await enrichTradesWithUsers(fresh, userCacheRef.current);
 
         if (!cancelled) {
           setTrades((prev) => {
-            // Clear isNew flag on old trades
             const existing = prev.map((t) => ({ ...t, isNew: false }));
             return [...fresh, ...existing];
           });
@@ -705,26 +721,29 @@ export function useTokenHolders(tokenAddress: string | undefined) {
 
     async function load() {
       try {
-        // Get token creation time for block estimation
-        const launchInfo = await publicClient.readContract({
-          address: contracts.LaunchpadFactory as Address,
-          abi: LaunchpadFactoryABI,
-          functionName: 'getLaunchInfo',
-          args: [tokenAddress as Address],
-        });
-
-        if (cancelled) return;
-
-        const createdAt = Number((launchInfo as any).createdAt);
         const currentBlock = await publicClient.getBlockNumber();
-        const now = Math.floor(Date.now() / 1000);
-        const secondsAgo = Math.max(now - createdAt, 0);
-        const blocksAgo = BigInt(Math.ceil(secondsAgo / 2)) + 500n;
-        const startBlock = currentBlock > blocksAgo ? currentBlock - blocksAgo : 0n;
+
+        // Try exact creation block from backend
+        let startBlock: bigint;
+        try {
+          const creatorRes = await fetch(`${API_BASE}/api/tokens/${tokenAddress}/creator`);
+          if (creatorRes.ok) {
+            const data = await creatorRes.json();
+            if (data.created_block) {
+              startBlock = BigInt(data.created_block) - 1n;
+            } else {
+              throw new Error('no block');
+            }
+          } else {
+            throw new Error('not found');
+          }
+        } catch {
+          startBlock = currentBlock > 5000n ? currentBlock - 5000n : 0n;
+        }
 
         if (cancelled) return;
 
-        // Paginate Transfer events — fire ALL chunks in parallel
+        // Paginate Transfer events in parallel
         const CHUNK = 2000n;
         const uniqueAddresses = new Set<string>();
         const ZERO = '0x0000000000000000000000000000000000000000';
@@ -756,7 +775,6 @@ export function useTokenHolders(tokenAddress: string | undefined) {
 
         if (cancelled) return;
 
-        // Read current balanceOf for each unique address
         const addresses = [...uniqueAddresses];
         const balances = await Promise.all(
           addresses.map(async (addr) => {
@@ -776,7 +794,6 @@ export function useTokenHolders(tokenAddress: string | undefined) {
 
         if (cancelled) return;
 
-        // Get total supply for percentage calculation
         const totalSupply = await publicClient.readContract({
           address: tokenAddress as Address,
           abi: ERC20ABI,
@@ -785,7 +802,6 @@ export function useTokenHolders(tokenAddress: string | undefined) {
 
         const totalSupplyNum = Number(formatEther(totalSupply));
 
-        // Filter non-zero, format, and sort
         const holderList: TokenHolder[] = balances
           .filter((b) => b.balance > 0n)
           .map((b) => {
@@ -798,7 +814,6 @@ export function useTokenHolders(tokenAddress: string | undefined) {
           })
           .sort((a, b) => b.balance - a.balance);
 
-        // Resolve user names for holders
         const holderAddresses = holderList.map((h) => h.address);
         const userMap = await resolveWalletUsers(holderAddresses);
         const enrichedHolders = holderList.map((h) => {
@@ -832,28 +847,9 @@ export interface GlobalTrade extends TradeActivity {
   tokenSymbol: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-/** Batch-resolve wallet addresses → user profiles from backend */
-async function resolveWalletUsers(
-  addresses: string[],
-): Promise<Record<string, { handle: string; name: string; avatar: string }>> {
-  if (addresses.length === 0) return {};
-  try {
-    const unique = [...new Set(addresses.map(a => a.toLowerCase()))];
-    const res = await fetch(`${API_BASE}/api/users/by-wallet?addresses=${unique.join(',')}`);
-    if (!res.ok) return {};
-    return await res.json();
-  } catch {
-    return {};
-  }
-}
-
 /**
- * Global live trade feed — queries Router's SwapExecuted events across ALL tokens.
- * Resolves token symbols from the provided tokens list.
- * Resolves trader names from the backend user database.
- * Polls every 10 seconds for new trades.
+ * Global live trade feed — queries Cre8Manager Buy/Sell events across ALL tokens.
+ * Resolves token symbols and trader names.
  */
 export function useGlobalTradeActivity(tokens: OnChainToken[]) {
   const [trades, setTrades] = useState<GlobalTrade[]>([]);
@@ -862,23 +858,22 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
   const knownTxRef = useRef<Set<string>>(new Set());
   const tokensRef = useRef<OnChainToken[]>(tokens);
   const userCacheRef = useRef<Record<string, { handle: string; name: string; avatar: string }>>({});
+  const timestampsRef = useRef<Map<bigint, number>>(new Map());
 
-  // Keep tokens ref current
   useEffect(() => { tokensRef.current = tokens; }, [tokens]);
 
-  const resolveSymbol = (addr: string): string => {
-    const t = tokensRef.current.find(
-      (tk) => tk.address.toLowerCase() === addr.toLowerCase(),
-    );
-    return t ? t.symbol : addr.slice(0, 6);
+  const resolveSymbol = (tokenId: bigint): { symbol: string; address: string } => {
+    const t = tokensRef.current.find((tk) => tk.tokenId === tokenId);
+    return t ? { symbol: t.symbol, address: t.address } : { symbol: `#${tokenId}`, address: '' };
   };
 
-  async function parseSwapLogs(
-    logs: any[],
+  async function parseGlobalLogs(
+    buyLogs: any[],
+    sellLogs: any[],
     existingTimestamps?: Map<bigint, number>,
   ): Promise<{ trades: GlobalTrade[]; timestamps: Map<bigint, number> }> {
     const blockNumbers = new Set<bigint>();
-    for (const log of logs) {
+    for (const log of [...buyLogs, ...sellLogs]) {
       if (log.blockNumber && (!existingTimestamps || !existingTimestamps.has(log.blockNumber))) {
         blockNumbers.add(log.blockNumber);
       }
@@ -896,34 +891,55 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
       }),
     );
 
-    // Collect trader addresses that aren't in the cache yet
-    const uncachedTraders = logs
-      .map((log) => ((log as any).args.user as string).toLowerCase())
-      .filter((addr) => !userCacheRef.current[addr]);
-
-    if (uncachedTraders.length > 0) {
-      const resolved = await resolveWalletUsers(uncachedTraders);
+    // Resolve trader names
+    const allTraders = [
+      ...buyLogs.map((l) => ((l as any).args.buyer as string).toLowerCase()),
+      ...sellLogs.map((l) => ((l as any).args.seller as string).toLowerCase()),
+    ];
+    const uncached = allTraders.filter((addr) => !userCacheRef.current[addr]);
+    if (uncached.length > 0) {
+      const resolved = await resolveWalletUsers(uncached);
       Object.assign(userCacheRef.current, resolved);
     }
 
-    const parsed: GlobalTrade[] = logs.map((log) => {
+    const buys: GlobalTrade[] = buyLogs.map((log) => {
       const args = (log as any).args;
-      const isBuy = args.isBuy as boolean;
-      const amountIn = Number(formatEther(args.amountIn as bigint));
-      const amountOut = Number(formatEther(args.amountOut as bigint));
-      const tokenAddr = args.token as string;
-      const traderAddr = (args.user as string).toLowerCase();
+      const tokenId = args.tokenId as bigint;
+      const { symbol, address } = resolveSymbol(tokenId);
+      const traderAddr = (args.buyer as string).toLowerCase();
       const userInfo = userCacheRef.current[traderAddr];
-
       return {
-        type: isBuy ? 'buy' : 'sell',
-        trader: args.user as string,
+        type: 'buy' as const,
+        trader: args.buyer as string,
         traderName: userInfo?.name || userInfo?.handle,
         traderAvatar: userInfo?.avatar,
-        tokenAddress: tokenAddr,
-        tokenSymbol: resolveSymbol(tokenAddr),
-        avaxAmount: isBuy ? amountIn : amountOut,
-        tokenAmount: isBuy ? amountOut : amountIn,
+        tokenAddress: address,
+        tokenSymbol: symbol,
+        avaxAmount: Number(formatEther(args.avaxIn as bigint)),
+        tokenAmount: Number(formatEther(args.tokensOut as bigint)),
+        newPrice: Number(formatEther(args.newPrice as bigint)),
+        timestamp: blockTimestamps.get(log.blockNumber!) || 0,
+        txHash: log.transactionHash || '',
+        isNew: false,
+      };
+    });
+
+    const sells: GlobalTrade[] = sellLogs.map((log) => {
+      const args = (log as any).args;
+      const tokenId = args.tokenId as bigint;
+      const { symbol, address } = resolveSymbol(tokenId);
+      const traderAddr = (args.seller as string).toLowerCase();
+      const userInfo = userCacheRef.current[traderAddr];
+      return {
+        type: 'sell' as const,
+        trader: args.seller as string,
+        traderName: userInfo?.name || userInfo?.handle,
+        traderAvatar: userInfo?.avatar,
+        tokenAddress: address,
+        tokenSymbol: symbol,
+        avaxAmount: Number(formatEther(args.avaxOut as bigint)),
+        tokenAmount: Number(formatEther(args.tokensIn as bigint)),
+        newPrice: Number(formatEther(args.newPrice as bigint)),
         timestamp: blockTimestamps.get(log.blockNumber!) || 0,
         txHash: log.transactionHash || '',
         isNew: false,
@@ -931,25 +947,21 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
     });
 
     return {
-      trades: parsed.sort((a, b) => b.timestamp - a.timestamp),
+      trades: [...buys, ...sells].sort((a, b) => b.timestamp - a.timestamp),
       timestamps: blockTimestamps,
     };
   }
 
-  const timestampsRef = useRef<Map<bigint, number>>(new Map());
-
-  // Initial load — fetch recent SwapExecuted events from Router
+  // Initial load — fetch last 24h of Buy/Sell events
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
         const currentBlock = await publicClient.getBlockNumber();
-        // Scan last 24 hours (~43,200 blocks at 2s/block)
         const ONE_DAY = 43_200n;
         const startBlock = currentBlock > ONE_DAY ? currentBlock - ONE_DAY : 0n;
 
-        // Build chunk ranges then fire ALL in parallel (much faster than sequential)
         const CHUNK = 2000n;
         const ranges: { from: bigint; to: bigint }[] = [];
         for (let from = startBlock; from <= currentBlock; from += CHUNK + 1n) {
@@ -958,20 +970,19 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
 
         const results = await Promise.all(
           ranges.map(({ from, to }) =>
-            publicClient.getLogs({
-              address: contracts.LaunchpadRouter as Address,
-              event: SwapExecutedEvent,
-              fromBlock: from,
-              toBlock: to,
-            })
+            Promise.all([
+              publicClient.getLogs({ address: managerAddress, event: BuyEvent, fromBlock: from, toBlock: to }),
+              publicClient.getLogs({ address: managerAddress, event: SellEvent, fromBlock: from, toBlock: to }),
+            ])
           )
         );
 
         if (cancelled) return;
 
-        const allLogs = results.flat();
+        const allBuyLogs = results.flatMap(([buys]) => buys);
+        const allSellLogs = results.flatMap(([, sells]) => sells);
 
-        const { trades: parsed, timestamps } = await parseSwapLogs(allLogs);
+        const { trades: parsed, timestamps } = await parseGlobalLogs(allBuyLogs, allSellLogs);
         timestampsRef.current = timestamps;
         lastBlockRef.current = currentBlock;
         for (const t of parsed) knownTxRef.current.add(t.txHash);
@@ -988,17 +999,18 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
     return () => { cancelled = true; };
   }, []);
 
-  // Re-resolve token symbols when the tokens list loads/changes
+  // Re-resolve token symbols when the tokens list changes
   useEffect(() => {
     if (tokens.length === 0) return;
 
     setTrades((prev) => {
       let changed = false;
       const updated = prev.map((trade) => {
-        const resolved = resolveSymbol(trade.tokenAddress);
-        if (resolved !== trade.tokenSymbol) {
+        // Find by tokenAddress match
+        const t = tokens.find((tk) => tk.address.toLowerCase() === trade.tokenAddress.toLowerCase());
+        if (t && t.symbol !== trade.tokenSymbol) {
           changed = true;
-          return { ...trade, tokenSymbol: resolved };
+          return { ...trade, tokenSymbol: t.symbol };
         }
         return trade;
       });
@@ -1018,18 +1030,17 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
         if (currentBlock <= lastBlockRef.current) return;
 
         const fromBlock = lastBlockRef.current + 1n;
-        const logs = await publicClient.getLogs({
-          address: contracts.LaunchpadRouter as Address,
-          event: SwapExecutedEvent,
-          fromBlock,
-          toBlock: currentBlock,
-        });
+
+        const [buyLogs, sellLogs] = await Promise.all([
+          publicClient.getLogs({ address: managerAddress, event: BuyEvent, fromBlock, toBlock: currentBlock }),
+          publicClient.getLogs({ address: managerAddress, event: SellEvent, fromBlock, toBlock: currentBlock }),
+        ]);
 
         lastBlockRef.current = currentBlock;
-        if (logs.length === 0) return;
+        if (buyLogs.length === 0 && sellLogs.length === 0) return;
 
-        const { trades: newTrades, timestamps } = await parseSwapLogs(
-          logs, timestampsRef.current,
+        const { trades: newTrades, timestamps } = await parseGlobalLogs(
+          buyLogs, sellLogs, timestampsRef.current,
         );
         timestampsRef.current = timestamps;
 
@@ -1043,7 +1054,7 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
         if (!cancelled) {
           setTrades((prev) => {
             const existing = prev.map((t) => ({ ...t, isNew: false }));
-            return [...fresh, ...existing].slice(0, 50); // keep last 50
+            return [...fresh, ...existing].slice(0, 50);
           });
         }
       } catch (err) {

@@ -79,12 +79,18 @@ export function CreateTokenPage() {
         if (imagePreview?.startsWith('data:')) {
           uploadTokenImage(receipt.tokenAddress, imagePreview);
         }
-        // Register token creator for notifications + trade history (fire-and-forget)
+        // Register token creator + metadata (fire-and-forget)
         registerTokenCreator(
           receipt.tokenAddress,
           formData.name,
           formData.ticker.replace('$', ''),
           receipt.blockNumber,
+          {
+            description: formData.description,
+            twitter: formData.twitter,
+            telegram: formData.telegram,
+            website: formData.website,
+          },
         );
       }
 

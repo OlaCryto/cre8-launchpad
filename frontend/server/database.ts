@@ -136,6 +136,10 @@ export async function initDatabase() {
       token_name TEXT NOT NULL,
       token_symbol TEXT NOT NULL,
       created_block BIGINT,
+      description TEXT NOT NULL DEFAULT '',
+      twitter TEXT NOT NULL DEFAULT '',
+      telegram TEXT NOT NULL DEFAULT '',
+      website TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -176,6 +180,13 @@ export async function initDatabase() {
     }
   } catch (e: any) {
     console.warn('[Database] Notifications migration check:', e.message);
+  }
+
+  // Migrate: add metadata columns to token_creators if missing
+  for (const col of ['description', 'twitter', 'telegram', 'website']) {
+    try {
+      await pool.query(`ALTER TABLE token_creators ADD COLUMN IF NOT EXISTS ${col} TEXT NOT NULL DEFAULT ''`);
+    } catch { /* column already exists */ }
   }
 
   // Indexes for new tables (created separately to handle pre-existing schema mismatches)
@@ -667,13 +678,18 @@ export async function registerTokenCreator(data: {
   token_name: string;
   token_symbol: string;
   created_block?: number;
+  description?: string;
+  twitter?: string;
+  telegram?: string;
+  website?: string;
 }) {
   await pool.query(
-    `INSERT INTO token_creators (token_address, creator_address, token_name, token_symbol, created_block)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO token_creators (token_address, creator_address, token_name, token_symbol, created_block, description, twitter, telegram, website)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (token_address) DO NOTHING`,
     [data.token_address.toLowerCase(), data.creator_address.toLowerCase(),
-     data.token_name, data.token_symbol, data.created_block || null]
+     data.token_name, data.token_symbol, data.created_block || null,
+     data.description || '', data.twitter || '', data.telegram || '', data.website || '']
   );
 }
 

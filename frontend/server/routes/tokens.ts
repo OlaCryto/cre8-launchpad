@@ -8,7 +8,7 @@ const router = Router();
 // POST /api/tokens/register — called by frontend after successful token creation
 router.post('/register', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { token_address, token_name, token_symbol, created_block } = req.body;
+    const { token_address, token_name, token_symbol, created_block, description, twitter, telegram, website } = req.body;
 
     if (!token_address || !isValidAddress(token_address)) {
       res.status(400).json({ error: 'Invalid token_address' });
@@ -29,6 +29,10 @@ router.post('/register', requireAuth, async (req: AuthenticatedRequest, res: Res
       token_name,
       token_symbol,
       created_block: created_block ? Number(created_block) : undefined,
+      description: typeof description === 'string' ? description.slice(0, 500) : '',
+      twitter: typeof twitter === 'string' ? twitter.slice(0, 100) : '',
+      telegram: typeof telegram === 'string' ? telegram.slice(0, 100) : '',
+      website: typeof website === 'string' ? website.slice(0, 200) : '',
     });
 
     res.status(201).json({ ok: true });

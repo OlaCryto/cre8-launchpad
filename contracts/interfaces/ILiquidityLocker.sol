@@ -7,13 +7,13 @@ pragma solidity ^0.8.24;
  */
 interface ILiquidityLocker {
     struct LockInfo {
-        address token;           // The launchpad token
-        address lpToken;         // The LP token address
-        address owner;           // Who can unlock (usually the platform)
-        uint256 amount;          // Amount of LP tokens locked
-        uint256 lockedAt;        // When it was locked
-        uint256 unlockTime;      // When it can be unlocked
-        bool isUnlocked;         // Whether it has been unlocked
+        address token;
+        address lpToken;
+        address owner;
+        uint256 amount;
+        uint256 lockedAt;
+        uint256 unlockTime;
+        bool isUnlocked;
     }
 
     event LiquidityLocked(
@@ -31,26 +31,10 @@ interface ILiquidityLocker {
         uint256 amount
     );
 
-    event LockExtended(
-        uint256 indexed lockId,
-        uint256 oldUnlockTime,
-        uint256 newUnlockTime
-    );
+    event LockExtended(uint256 indexed lockId, uint256 oldUnlockTime, uint256 newUnlockTime);
+    event EmergencyUnlock(uint256 indexed lockId, address indexed by, string reason);
 
-    event EmergencyUnlock(
-        uint256 indexed lockId,
-        address indexed by,
-        string reason
-    );
-
-    function lock(
-        address token,
-        address lpToken,
-        uint256 amount,
-        uint256 duration,
-        address owner
-    ) external returns (uint256 lockId);
-
+    function lock(address token, address lpToken, uint256 amount, uint256 duration, address owner) external returns (uint256 lockId);
     function unlock(uint256 lockId, address recipient) external returns (uint256 amount);
     function extendLock(uint256 lockId, uint256 additionalTime) external;
 

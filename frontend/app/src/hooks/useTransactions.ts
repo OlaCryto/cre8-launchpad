@@ -1,16 +1,20 @@
 /**
- * Transaction hooks — write operations to Fuji contracts via viem walletClient.
+ * Transaction hooks — write operations to Cre8Manager via viem walletClient.
  * Each hook exposes { isLoading, isPending, hash, error, execute }.
+ *
+ * Single-contract architecture: all writes go to Cre8Manager.
+ * No more Router/Factory/CreatorRegistry separation.
  */
 
 import { useState, useCallback } from 'react';
 import { type Address, type Hash, parseEther, decodeEventLog } from 'viem';
 import { publicClient, createWalletClientFromKey } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
-import { LaunchpadRouterABI, LaunchpadFactoryABI, CreatorRegistryABI, ERC20ABI, TokenCreatedEvent } from '@/config/abis';
+import { Cre8ManagerABI, ERC20ABI, TokenCreatedEvent } from '@/config/abis';
 import { useAuth } from '@/contexts/AuthContext';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
+const managerAddress = contracts.Cre8Manager as Address;
 const CREATION_FEE = parseEther('0.02');
 
 // ============ Types ============
@@ -41,34 +45,19 @@ function useWalletClient() {
   }
 }
 
-// ============ Hooks ============
-
-/** Ensure the connected wallet has a CreatorRegistry profile; create one if not. */
-async function ensureProfile(wallet: ReturnType<typeof useWalletClient>) {
-  if (!wallet) return;
-  try {
-    const has = await publicClient.readContract({
-      address: contracts.CreatorRegistry as Address,
-      abi: CreatorRegistryABI,
-      functionName: 'hasProfile',
-      args: [wallet.account.address],
-    });
-    if (has) return;
-
-    const shortAddr = wallet.account.address.slice(0, 6);
-    const hash = await wallet.walletClient.writeContract({
-      address: contracts.CreatorRegistry as Address,
-      abi: CreatorRegistryABI,
-      functionName: 'createProfile',
-      args: [shortAddr, shortAddr, '', ''],
-    });
-    await publicClient.waitForTransactionReceipt({ hash });
-  } catch {
-    // Profile creation is best-effort; the main tx will show proper error
-  }
+/** Resolve token address to tokenId via Cre8Manager */
+async function resolveTokenId(tokenAddress: string): Promise<bigint> {
+  return await publicClient.readContract({
+    address: managerAddress,
+    abi: Cre8ManagerABI,
+    functionName: 'getTokenByAddress',
+    args: [tokenAddress as Address],
+  }) as bigint;
 }
 
-/** Create a token via createTokenEasy with optional creator initial buy */
+// ============ Hooks ============
+
+/** Create a token via Cre8Manager.createToken (Easy Mode) with optional creator initial buy */
 export function useCreateTokenAndBuy() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
   const wallet = useWalletClient();
@@ -88,41 +77,32 @@ export function useCreateTokenAndBuy() {
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      // Auto-create a minimal creator profile if the wallet doesn't have one
-      await ensureProfile(wallet);
-
-      const safeImageURI = params.imageURI.startsWith('data:') ? '' : params.imageURI;
-
-      // msg.value = creation fee + actual AVAX amount from the slider
+      // msg.value = creation fee + actual AVAX for initial buy
       const buyAvax = params.creatorBuyBps > 0 && params.creatorBuyAvax > 0
         ? parseEther(params.creatorBuyAvax.toString())
         : 0n;
       const totalValue = CREATION_FEE + buyAvax;
 
+      // Cre8Manager.createToken(name, symbol, creatorBuyBps)
+      // Metadata (description, image, socials) stored in backend, not on-chain
       const hash = await wallet.walletClient.writeContract({
-        address: contracts.LaunchpadFactory as Address,
-        abi: LaunchpadFactoryABI,
-        functionName: 'createTokenEasy',
+        address: managerAddress,
+        abi: Cre8ManagerABI,
+        functionName: 'createToken',
         args: [
-          {
-            name: params.name,
-            symbol: params.symbol,
-            imageURI: safeImageURI,
-            description: params.description,
-            twitter: params.twitter,
-            telegram: params.telegram,
-            website: params.website,
-            creatorBuyBps: BigInt(params.creatorBuyBps),
-          },
+          params.name,
+          params.symbol,
+          BigInt(params.creatorBuyBps),
         ],
         value: totalValue,
-        gas: 3_000_000n,
+        gas: 1_500_000n,
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       setState({ isLoading: false, isPending: false, hash, error: null });
 
+      // Parse TokenCreated event to get the new token address
       let tokenAddress: string | null = null;
       for (const log of receipt.logs) {
         try {
@@ -131,7 +111,7 @@ export function useCreateTokenAndBuy() {
             data: log.data,
             topics: log.topics,
           });
-          if (decoded.eventName === 'TokenLaunched') {
+          if (decoded.eventName === 'TokenCreated') {
             tokenAddress = (decoded.args as any).token;
             break;
           }
@@ -145,8 +125,6 @@ export function useCreateTokenAndBuy() {
       let msg = err?.shortMessage || err?.message || 'Transaction failed';
       if (msg.includes('insufficient funds') || msg.includes('exceeds the balance')) {
         msg = 'Insufficient AVAX balance. You need at least 0.05 AVAX (creation fee + gas).';
-      } else if (msg.includes('Unauthorized')) {
-        msg = 'Profile creation required. Please try again.';
       }
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
@@ -158,7 +136,7 @@ export function useCreateTokenAndBuy() {
   return { ...state, execute, reset };
 }
 
-/** Buy tokens on bonding curve */
+/** Buy tokens on bonding curve via Cre8Manager.buy(tokenId, minTokensOut, deadline) */
 export function useBuy() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
   const wallet = useWalletClient();
@@ -172,22 +150,17 @@ export function useBuy() {
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
+      const tokenId = await resolveTokenId(params.tokenAddress);
       const value = parseEther(params.avaxAmount.toString());
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 300); // 5 min
 
       const hash = await wallet.walletClient.writeContract({
-        address: contracts.LaunchpadRouter as Address,
-        abi: LaunchpadRouterABI,
+        address: managerAddress,
+        abi: Cre8ManagerABI,
         functionName: 'buy',
-        args: [{
-          token: params.tokenAddress as Address,
-          amountIn: value,
-          minAmountOut: params.minTokensOut,
-          recipient: wallet.account.address,
-          deadline,
-        }],
+        args: [tokenId, params.minTokensOut, deadline],
         value,
-        gas: 500_000n,
+        gas: 300_000n,
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -206,12 +179,12 @@ export function useBuy() {
   return { ...state, execute, reset };
 }
 
-/** Sell tokens — handles ERC20 approve + sell in two steps */
+/**
+ * Sell tokens via Cre8Manager.sell(tokenId, amount, minAvaxOut, deadline).
+ * No ERC20 approve needed — Cre8Manager is the token owner and burns directly.
+ */
 export function useSell() {
-  const [state, setState] = useState<TxState & { step: 'idle' | 'approving' | 'selling' }>({
-    ...INITIAL_STATE,
-    step: 'idle',
-  });
+  const [state, setState] = useState<TxState>(INITIAL_STATE);
   const wallet = useWalletClient();
 
   const execute = useCallback(async (params: {
@@ -220,58 +193,32 @@ export function useSell() {
     minAvaxOut: bigint;
   }) => {
     if (!wallet) throw new Error('Not authenticated');
-    setState({ isLoading: true, isPending: false, hash: null, error: null, step: 'approving' });
+    setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      // Step 1: Check allowance
-      const currentAllowance = await publicClient.readContract({
-        address: params.tokenAddress as Address,
-        abi: ERC20ABI,
-        functionName: 'allowance',
-        args: [wallet.account.address, contracts.LaunchpadRouter as Address],
-      }) as bigint;
-
-      // Step 2: Approve if needed
-      if (currentAllowance < params.tokenAmount) {
-        const approveHash = await wallet.walletClient.writeContract({
-          address: params.tokenAddress as Address,
-          abi: ERC20ABI,
-          functionName: 'approve',
-          args: [contracts.LaunchpadRouter as Address, params.tokenAmount],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: approveHash });
-      }
-
-      // Step 3: Execute sell
-      setState(s => ({ ...s, step: 'selling' }));
+      const tokenId = await resolveTokenId(params.tokenAddress);
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
 
       const hash = await wallet.walletClient.writeContract({
-        address: contracts.LaunchpadRouter as Address,
-        abi: LaunchpadRouterABI,
+        address: managerAddress,
+        abi: Cre8ManagerABI,
         functionName: 'sell',
-        args: [{
-          token: params.tokenAddress as Address,
-          amountIn: params.tokenAmount,
-          minAmountOut: params.minAvaxOut,
-          recipient: wallet.account.address,
-          deadline,
-        }],
-        gas: 500_000n,
+        args: [tokenId, params.tokenAmount, params.minAvaxOut, deadline],
+        gas: 300_000n,
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      setState({ isLoading: false, isPending: false, hash, error: null, step: 'idle' });
+      setState({ isLoading: false, isPending: false, hash, error: null });
       return receipt;
     } catch (err: any) {
       const msg = err?.shortMessage || err?.message || 'Sell failed';
-      setState({ isLoading: false, isPending: false, hash: null, error: msg, step: 'idle' });
+      setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
   }, [wallet]);
 
-  const reset = useCallback(() => setState({ ...INITIAL_STATE, step: 'idle' }), []);
+  const reset = useCallback(() => setState(INITIAL_STATE), []);
 
   return { ...state, execute, reset };
 }
@@ -343,43 +290,5 @@ export function useSendToken() {
   }, [wallet]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
-  return { ...state, execute, reset };
-}
-
-/** Create an on-chain creator profile */
-export function useCreateProfile() {
-  const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
-
-  const execute = useCallback(async (params: {
-    handle: string;
-    displayName: string;
-    avatarURI: string;
-    bio: string;
-  }) => {
-    if (!wallet) throw new Error('Not authenticated');
-    setState({ isLoading: true, isPending: false, hash: null, error: null });
-
-    try {
-      const hash = await wallet.walletClient.writeContract({
-        address: contracts.CreatorRegistry as Address,
-        abi: CreatorRegistryABI,
-        functionName: 'createProfile',
-        args: [params.handle, params.displayName, params.avatarURI, params.bio],
-      });
-
-      setState(s => ({ ...s, isPending: true, hash }));
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      setState({ isLoading: false, isPending: false, hash, error: null });
-      return receipt;
-    } catch (err: any) {
-      const msg = err?.shortMessage || err?.message || 'Profile creation failed';
-      setState({ isLoading: false, isPending: false, hash: null, error: msg });
-      throw err;
-    }
-  }, [wallet]);
-
-  const reset = useCallback(() => setState(INITIAL_STATE), []);
-
   return { ...state, execute, reset };
 }

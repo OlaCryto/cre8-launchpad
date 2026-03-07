@@ -15,7 +15,31 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useAuth, type CreatorProject } from '@/contexts/AuthContext';
 import { useAvaxBalance } from '@/hooks/useContracts';
-import { useCreatorForgeLaunches, useCreateForgeLaunch, useExecuteLaunch, type ForgeLaunchInfo } from '@/hooks/useForge';
+import { useCreateForgeToken } from '@/hooks/useForge';
+
+// Legacy Forge types — presale/vesting contracts no longer exist in v3.
+// Stubbed to keep the dashboard compiling while Forge UI is updated.
+interface ForgeLaunchInfo {
+  launchId: number;
+  creator: string;
+  token: string;
+  bondingCurve: string;
+  presaleVault: string;
+  vestingContract: string;
+  phase: number;
+  createdAt: number;
+  launchedAt: number;
+  config: { name: string; symbol: string; presaleEnabled: boolean; whitelistEnabled: boolean; vestingEnabled: boolean };
+}
+function useCreatorForgeLaunches(_addr: string | undefined) {
+  return { launches: [] as ForgeLaunchInfo[], isLoading: false, error: null };
+}
+function useCreateForgeLaunch() {
+  return { isLoading: false, isPending: false, hash: null, error: null, execute: async (_p: any) => ({ logs: [], transactionHash: '' }) };
+}
+function useExecuteLaunch() {
+  return { isLoading: false, isPending: false, hash: null, error: null, execute: async (_id: number) => {} };
+}
 import { FEES } from '@/config/wagmi';
 import { parseEther } from 'viem';
 

@@ -197,7 +197,7 @@ export function TokenDetailPage() {
   const balance = useAvaxBalance(user?.wallet.address);
   const tokenBalance = useTokenBalance(displayAddress, user?.wallet.address);
   const { isLoading: buyLoading, isPending: buyPending, execute: executeBuy } = useBuy();
-  const { isLoading: sellLoading, isPending: sellPending, step: sellStep, execute: executeSell } = useSell();
+  const { isLoading: sellLoading, isPending: sellPending, execute: executeSell } = useSell();
   const { trades, isLoading: tradesLoading } = useTradeActivity(displayAddress);
   const { holders, isLoading: holdersLoading } = useTokenHolders(displayAddress);
   const priceChanges = usePriceChanges(displayAddress);
@@ -686,7 +686,7 @@ export function TokenDetailPage() {
                   {(buyLoading || sellLoading) && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />}
                   {activeTab === 'buy'
                     ? (buyPending ? 'Confirming...' : buyLoading ? 'Submitting...' : `Buy ${displaySymbol}`)
-                    : (sellStep === 'approving' ? 'Approving...' : sellPending ? 'Confirming...' : sellLoading ? 'Selling...' : `Sell ${displaySymbol}`)}
+                    : (sellPending ? 'Confirming...' : sellLoading ? 'Selling...' : `Sell ${displaySymbol}`)}
                 </Button>
               ) : (
                 <Button onClick={signInWithX} disabled={isLoading}

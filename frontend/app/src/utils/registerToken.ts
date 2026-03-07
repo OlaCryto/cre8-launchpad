@@ -12,6 +12,12 @@ export async function registerTokenCreator(
   tokenName: string,
   tokenSymbol: string,
   createdBlock?: bigint | number,
+  metadata?: {
+    description?: string;
+    twitter?: string;
+    telegram?: string;
+    website?: string;
+  },
 ): Promise<boolean> {
   const sessionToken = localStorage.getItem('cre8_session');
   if (!sessionToken) return false;
@@ -28,6 +34,10 @@ export async function registerTokenCreator(
         token_name: tokenName,
         token_symbol: tokenSymbol,
         created_block: createdBlock ? Number(createdBlock) : undefined,
+        description: metadata?.description || '',
+        twitter: metadata?.twitter || '',
+        telegram: metadata?.telegram || '',
+        website: metadata?.website || '',
       }),
     });
     return res.ok;
