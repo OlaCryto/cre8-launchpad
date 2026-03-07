@@ -99,8 +99,8 @@ function validateEnv() {
   if (!process.env.ADMIN_API_KEY) {
     console.warn('[WARN] ADMIN_API_KEY not set — admin routes will be inaccessible');
   }
-  if (!process.env.TWITTER_CLIENT_ID || !process.env.TWITTER_CLIENT_SECRET) {
-    console.warn('[WARN] Twitter OAuth credentials not set — auth will fail');
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.warn('[WARN] Google OAuth credentials not set — auth will fail');
   }
 }
 

@@ -10,7 +10,18 @@ import { generateAuthLink, handleCallback } from '../services/twitter.js';
 
 const router = Router();
 
-// ============ GET /api/auth/twitter ============
+// ============ GET /api/auth/google ============
+router.get('/google', async (_req: Request, res: Response) => {
+  try {
+    const { url } = await generateAuthLink();
+    res.json({ url });
+  } catch (err: any) {
+    console.error('Failed to generate auth link:', err);
+    res.status(500).json({ error: 'Failed to start authentication' });
+  }
+});
+
+// Keep /twitter as alias for backwards compatibility
 router.get('/twitter', async (_req: Request, res: Response) => {
   try {
     const { url } = await generateAuthLink();
@@ -21,8 +32,8 @@ router.get('/twitter', async (_req: Request, res: Response) => {
   }
 });
 
-// ============ GET /api/auth/callback ============
-router.get('/callback', async (req: Request, res: Response) => {
+// ============ GET /api/auth/callback & /api/auth/google/callback ============
+const handleOAuthCallback = async (req: Request, res: Response) => {
   const { code, state } = req.query;
   const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
 
@@ -73,7 +84,10 @@ router.get('/callback', async (req: Request, res: Response) => {
     console.error('OAuth callback error:', err);
     res.redirect(`${frontendUrl}/auth/callback?error=auth_failed`);
   }
-});
+};
+
+router.get('/callback', handleOAuthCallback);
+router.get('/google/callback', handleOAuthCallback);
 
 // ============ GET /api/auth/session ============
 router.get('/session', async (req: Request, res: Response) => {

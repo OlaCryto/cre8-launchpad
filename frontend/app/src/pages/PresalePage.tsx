@@ -318,10 +318,10 @@ export function PresalePage() {
                   </div>
                 ) : (
                   <div className="text-center py-4">
-                    <p className="text-dim text-sm mb-3">Sign in with X to contribute.</p>
+                    <p className="text-dim text-sm mb-3">Sign in with Google to contribute.</p>
                     <Button onClick={signInWithX} disabled={authLoading}
                       className="w-full bg-black hover:bg-black/80 text-white font-semibold rounded-lg py-4 border border-white/20">
-                      {authLoading ? 'Signing in...' : 'Sign in with X'}
+                      {authLoading ? 'Signing in...' : 'Sign in with Google'}
                     </Button>
                   </div>
                 )}

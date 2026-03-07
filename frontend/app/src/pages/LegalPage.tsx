@@ -24,7 +24,7 @@ const PAGES: Record<string, { title: string; content: string[] }> = {
     title: 'Privacy Policy',
     content: [
       'Last updated: February 24, 2026',
-      '1. Information We Collect — When you sign in with X (Twitter), we receive your public profile information (display name, handle, avatar). We generate a wallet address for your account. We do not collect email addresses, phone numbers, or government IDs.',
+      '1. Information We Collect — When you sign in with Google, we receive your public profile information (display name, handle, avatar). We generate a wallet address for your account. We do not collect email addresses, phone numbers, or government IDs.',
       '2. Wallet & Keys — Your private key is generated client-side and stored encrypted in your browser\'s localStorage. Private keys are never transmitted to or stored on Cre8 servers.',
       '3. On-Chain Data — All transactions (token creation, buys, sells) are recorded on the Avalanche blockchain, which is publicly accessible. Cre8 does not control or own this data.',
       '4. Usage Data — We may collect anonymous usage metrics (page views, feature usage) to improve the Platform. We do not use tracking cookies or third-party analytics.',

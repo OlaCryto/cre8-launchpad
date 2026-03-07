@@ -110,7 +110,7 @@ export function ProfilePage() {
             <Wallet className="w-7 h-7 text-cre8-red" />
           </div>
           <h1 className="text-xl font-bold text-white mb-2">Sign in to Cre8</h1>
-          <p className="text-dim mb-6 text-sm">Connect with X to view your portfolio and trade tokens.</p>
+          <p className="text-dim mb-6 text-sm">Sign in to view your portfolio and trade tokens.</p>
           <Button onClick={signInWithX} disabled={isLoading}
             className="w-full bg-white text-black hover:bg-white/90 rounded-xl font-medium py-5">
             {isLoading ? (
@@ -122,7 +122,7 @@ export function ProfilePage() {
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
-                Sign in with X
+                Sign in with Google
               </span>
             )}
           </Button>

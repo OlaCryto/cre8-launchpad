@@ -35,13 +35,15 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
+  signInWithGoogle: () => Promise<void>;
+  /** @deprecated Use signInWithGoogle */
   signInWithX: () => Promise<void>;
   signOut: () => void;
   updateCreatorProfile: (profile: CreatorProject) => void;
   showPrivateKey: () => string | null;
-  /** Called by AuthCallbackPage after X redirects back */
+  /** Called by AuthCallbackPage after OAuth redirects back */
   handleAuthCallback: (sessionToken: string) => Promise<void>;
-  /** Dev-only: bypass X OAuth for local testing */
+  /** Dev-only: bypass OAuth for local testing */
   devLogin: () => Promise<void>;
 }
 
@@ -109,18 +111,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   };
 
-  /** Redirect to X OAuth */
-  const signInWithX = async () => {
+  /** Redirect to Google OAuth */
+  const signInWithGoogle = async () => {
     setState(s => ({ ...s, isLoading: true }));
     try {
-      const { url } = await apiCall('/api/auth/twitter');
-      // Redirect to X — user will come back via /auth/callback
+      const { url } = await apiCall('/api/auth/google');
       window.location.href = url;
     } catch (err) {
-      console.error('Failed to start X sign-in:', err);
+      console.error('Failed to start Google sign-in:', err);
       setState(s => ({ ...s, isLoading: false }));
     }
   };
+
+  /** @deprecated Use signInWithGoogle */
+  const signInWithX = signInWithGoogle;
 
   /** Called by AuthCallbackPage after X redirects back */
   const handleAuthCallback = async (sessionToken: string) => {
@@ -198,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       ...state,
+      signInWithGoogle,
       signInWithX,
       signOut,
       updateCreatorProfile,
