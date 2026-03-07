@@ -102,6 +102,8 @@ export function TokenDetailPage() {
   const displayName = chainMeta?.name || 'Loading...';
   const displaySymbol = chainMeta?.symbol || '';
   const displayCreator = launchData?.creator || '';
+  const isOwnToken = !!user?.wallet?.address && !!displayCreator &&
+    user.wallet.address.toLowerCase() === displayCreator.toLowerCase();
 
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
@@ -761,10 +763,12 @@ export function TokenDetailPage() {
                   </div>
                   <p className="text-[11px] text-dim mt-0.5">0.2% of trades</p>
                 </div>
-                <button onClick={handleFollow} disabled={followLoading}
-                  className={`text-xs border rounded-lg px-3 py-1.5 transition-colors shrink-0 ${following ? 'bg-cre8-red/15 text-cre8-red border-cre8-red/30' : 'text-dim hover:text-white border-white/[0.06]'}`}>
-                  {followLoading ? '...' : following ? 'Following' : 'Follow'}
-                </button>
+                {isAuthenticated && !isOwnToken && (
+                  <button onClick={handleFollow} disabled={followLoading}
+                    className={`text-xs border rounded-lg px-3 py-1.5 transition-colors shrink-0 ${following ? 'bg-cre8-red/15 text-cre8-red border-cre8-red/30' : 'text-dim hover:text-white border-white/[0.06]'}`}>
+                    {followLoading ? '...' : following ? 'Following' : 'Follow'}
+                  </button>
+                )}
               </div>
             </div>
 

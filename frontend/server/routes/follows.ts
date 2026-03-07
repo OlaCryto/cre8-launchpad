@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { toggleFollow, isFollowing, getFollowerCount } from '../database.js';
+import { toggleFollow, isFollowing, getFollowerCount, createNotification } from '../database.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { isValidAddress, param } from '../middleware/validation.js';
 
@@ -12,7 +12,22 @@ router.post('/:creatorAddress', requireAuth, async (req: AuthenticatedRequest, r
     res.status(400).json({ error: 'Invalid address' });
     return;
   }
+  if (req.sessionUser!.wallet_address.toLowerCase() === creatorAddress.toLowerCase()) {
+    res.status(400).json({ error: 'You cannot follow yourself' });
+    return;
+  }
   const followed = await toggleFollow(req.sessionUser!.wallet_address, creatorAddress);
+
+  // Notify creator when someone follows them
+  if (followed) {
+    createNotification({
+      user_address: creatorAddress,
+      type: 'follow',
+      title: 'New Follower',
+      body: `${req.sessionUser!.twitter_name || req.sessionUser!.twitter_handle} started following you`,
+    }).catch(() => {});
+  }
+
   res.json({ followed });
 });
 

@@ -555,14 +555,32 @@ export function useTradeActivity(tokenAddress: string | undefined) {
         if (cancelled) return;
 
         const curveAddress = (launchInfo as any).bondingCurve as Address;
+        const creatorAddr = (launchInfo as any).creator as string;
         curveRef.current = curveAddress;
         const createdAt = Number((launchInfo as any).createdAt);
 
         const currentBlock = await publicClient.getBlockNumber();
-        const now = Math.floor(Date.now() / 1000);
-        const secondsAgo = Math.max(now - createdAt, 0);
-        const blocksAgo = BigInt(Math.ceil(secondsAgo / 2)) + 500n;
-        const startBlock = currentBlock > blocksAgo ? currentBlock - blocksAgo : 0n;
+
+        // Try exact creation block from backend, fall back to generous time estimate
+        let startBlock: bigint;
+        try {
+          const creatorRes = await fetch(`${API_BASE}/api/tokens/${tokenAddress}/creator`);
+          if (creatorRes.ok) {
+            const creatorData = await creatorRes.json();
+            if (creatorData.created_block) {
+              startBlock = BigInt(creatorData.created_block) - 1n;
+            } else {
+              throw new Error('no block');
+            }
+          } else {
+            throw new Error('not found');
+          }
+        } catch {
+          const now = Math.floor(Date.now() / 1000);
+          const secondsAgo = Math.max(now - createdAt, 0);
+          const blocksAgo = BigInt(Math.ceil(secondsAgo / 2)) + 5000n;
+          startBlock = currentBlock > blocksAgo ? currentBlock - blocksAgo : 0n;
+        }
 
         if (cancelled) return;
 
@@ -589,7 +607,14 @@ export function useTradeActivity(tokenAddress: string | undefined) {
 
         if (cancelled) return;
 
-        const { trades: allTrades, timestamps } = await parseTradeLogs(allBuyLogs, allSellLogs);
+        const { trades: parsedTrades, timestamps } = await parseTradeLogs(allBuyLogs, allSellLogs);
+
+        // Fix: Factory-initiated creator buys show Factory as trader — replace with actual creator
+        const factoryAddr = contracts.LaunchpadFactory.toLowerCase();
+        const allTrades = parsedTrades.map(t =>
+          t.trader.toLowerCase() === factoryAddr ? { ...t, trader: creatorAddr } : t
+        );
+
         timestampsRef.current = timestamps;
         lastBlockRef.current = currentBlock;
 

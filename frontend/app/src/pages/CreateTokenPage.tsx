@@ -14,6 +14,7 @@ import { FEES, TOKEN_CONSTANTS } from '@/config/wagmi';
 import { useCreateTokenAndBuy } from '@/hooks/useTransactions';
 import { useAvaxBalance } from '@/hooks/useContracts';
 import { uploadTokenImage } from '@/utils/uploadImage';
+import { registerTokenCreator } from '@/utils/registerToken';
 
 export function CreateTokenPage() {
   const navigate = useNavigate();
@@ -73,8 +74,18 @@ export function CreateTokenPage() {
         creatorBuyAvax: initialBuy,
       });
 
-      if (receipt.tokenAddress && imagePreview?.startsWith('data:')) {
-        uploadTokenImage(receipt.tokenAddress, imagePreview);
+      if (receipt.tokenAddress) {
+        // Upload image (fire-and-forget)
+        if (imagePreview?.startsWith('data:')) {
+          uploadTokenImage(receipt.tokenAddress, imagePreview);
+        }
+        // Register token creator for notifications + trade history (fire-and-forget)
+        registerTokenCreator(
+          receipt.tokenAddress,
+          formData.name,
+          formData.ticker.replace('$', ''),
+          receipt.blockNumber,
+        );
       }
 
       toast.success('Token created!', { description: `TX: ${receipt.transactionHash.slice(0, 14)}...` });

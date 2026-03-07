@@ -122,6 +122,24 @@ export async function initDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS token_images (
+      token_address TEXT PRIMARY KEY,
+      mime_type TEXT NOT NULL,
+      image_data BYTEA NOT NULL,
+      uploaded_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS token_creators (
+      token_address TEXT PRIMARY KEY,
+      creator_address TEXT NOT NULL,
+      token_name TEXT NOT NULL,
+      token_symbol TEXT NOT NULL,
+      created_block BIGINT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_token_creators_creator ON token_creators(creator_address);
     CREATE INDEX IF NOT EXISTS idx_comments_token ON comments(token_address, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
     CREATE INDEX IF NOT EXISTS idx_price_snapshots_token ON price_snapshots(token_address, created_at DESC);
@@ -620,6 +638,59 @@ export async function getFollowerAddresses(creatorAddress: string): Promise<stri
     [creatorAddress.toLowerCase()]
   );
   return rows.map(r => r.follower_address);
+}
+
+// ============ Token Images ============
+
+export async function saveTokenImage(tokenAddress: string, mimeType: string, imageBuffer: Buffer, uploadedBy?: string) {
+  await pool.query(
+    `INSERT INTO token_images (token_address, mime_type, image_data, uploaded_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (token_address) DO UPDATE SET mime_type = $2, image_data = $3, uploaded_by = $4, created_at = NOW()`,
+    [tokenAddress.toLowerCase(), mimeType, imageBuffer, uploadedBy || null]
+  );
+}
+
+export async function getTokenImage(tokenAddress: string) {
+  const { rows } = await pool.query(
+    'SELECT mime_type, image_data FROM token_images WHERE token_address = $1',
+    [tokenAddress.toLowerCase()]
+  );
+  return rows[0] || null;
+}
+
+// ============ Token Creators ============
+
+export async function registerTokenCreator(data: {
+  token_address: string;
+  creator_address: string;
+  token_name: string;
+  token_symbol: string;
+  created_block?: number;
+}) {
+  await pool.query(
+    `INSERT INTO token_creators (token_address, creator_address, token_name, token_symbol, created_block)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (token_address) DO NOTHING`,
+    [data.token_address.toLowerCase(), data.creator_address.toLowerCase(),
+     data.token_name, data.token_symbol, data.created_block || null]
+  );
+}
+
+export async function getTokenCreator(tokenAddress: string) {
+  const { rows } = await pool.query(
+    'SELECT * FROM token_creators WHERE token_address = $1',
+    [tokenAddress.toLowerCase()]
+  );
+  return rows[0] || null;
+}
+
+export async function getTokensByCreator(creatorAddress: string) {
+  const { rows } = await pool.query(
+    'SELECT * FROM token_creators WHERE creator_address = $1 ORDER BY created_at DESC',
+    [creatorAddress.toLowerCase()]
+  );
+  return rows;
 }
 
 export default pool;

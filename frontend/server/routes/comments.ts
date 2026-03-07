@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { addComment, getComments, getReplies, toggleLike, getComment, isLikedByUser } from '../database.js';
+import { addComment, getComments, getReplies, toggleLike, getComment, isLikedByUser, getTokenCreator, createNotification } from '../database.js';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { validateTokenAddress, validateIntId, sanitizeText, param } from '../middleware/validation.js';
 
@@ -90,6 +90,62 @@ router.post('/', commentWriteLimiter, requireAuth, async (req: AuthenticatedRequ
     liked: false,
     created_at: new Date().toISOString(),
   });
+
+  // Fire-and-forget notifications — never blocks or fails the response
+  (async () => {
+    try {
+      const tokenCreator = await getTokenCreator(token_address);
+      const commenterAddr = user.wallet_address.toLowerCase();
+      const commenterName = user.twitter_name || user.twitter_handle;
+
+      if (!parent_id) {
+        // Top-level comment → notify token creator
+        if (tokenCreator && tokenCreator.creator_address !== commenterAddr) {
+          await createNotification({
+            user_address: tokenCreator.creator_address,
+            type: 'comment',
+            title: 'New Comment',
+            body: `${commenterName} commented on ${tokenCreator.token_symbol}`,
+            token_address,
+            token_symbol: tokenCreator.token_symbol,
+            creator_name: commenterName,
+          });
+        }
+      } else {
+        // Reply → notify parent comment author + token creator
+        const parentComment = await getComment(parseInt(parent_id));
+        if (parentComment && parentComment.author_address.toLowerCase() !== commenterAddr) {
+          await createNotification({
+            user_address: parentComment.author_address,
+            type: 'reply',
+            title: 'New Reply',
+            body: `${commenterName} replied to your comment`,
+            token_address,
+            token_symbol: tokenCreator?.token_symbol || '',
+            creator_name: commenterName,
+          });
+        }
+        // Also notify token creator if they're a different person
+        if (
+          tokenCreator &&
+          tokenCreator.creator_address !== commenterAddr &&
+          tokenCreator.creator_address !== parentComment?.author_address?.toLowerCase()
+        ) {
+          await createNotification({
+            user_address: tokenCreator.creator_address,
+            type: 'comment',
+            title: 'New Comment',
+            body: `${commenterName} commented on ${tokenCreator.token_symbol}`,
+            token_address,
+            token_symbol: tokenCreator.token_symbol,
+            creator_name: commenterName,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[Comments] Notification creation failed:', err);
+    }
+  })();
 });
 
 router.post('/:id/like', validateIntId, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
