@@ -276,6 +276,76 @@ export function useSell() {
   return { ...state, execute, reset };
 }
 
+/** Send AVAX to any address */
+export function useSendAVAX() {
+  const [state, setState] = useState<TxState>(INITIAL_STATE);
+  const wallet = useWalletClient();
+
+  const execute = useCallback(async (params: {
+    to: string;
+    amount: number;
+  }) => {
+    if (!wallet) throw new Error('Not authenticated');
+    setState({ isLoading: true, isPending: false, hash: null, error: null });
+
+    try {
+      const hash = await wallet.walletClient.sendTransaction({
+        to: params.to as Address,
+        value: parseEther(params.amount.toString()),
+      });
+
+      setState(s => ({ ...s, isPending: true, hash }));
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      setState({ isLoading: false, isPending: false, hash, error: null });
+      return receipt;
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.message || 'Transfer failed';
+      setState({ isLoading: false, isPending: false, hash: null, error: msg });
+      throw err;
+    }
+  }, [wallet]);
+
+  const reset = useCallback(() => setState(INITIAL_STATE), []);
+  return { ...state, execute, reset };
+}
+
+/** Send ERC20 tokens to any address */
+export function useSendToken() {
+  const [state, setState] = useState<TxState>(INITIAL_STATE);
+  const wallet = useWalletClient();
+
+  const execute = useCallback(async (params: {
+    tokenAddress: string;
+    to: string;
+    amount: bigint;
+  }) => {
+    if (!wallet) throw new Error('Not authenticated');
+    setState({ isLoading: true, isPending: false, hash: null, error: null });
+
+    try {
+      const hash = await wallet.walletClient.writeContract({
+        address: params.tokenAddress as Address,
+        abi: ERC20ABI,
+        functionName: 'transfer',
+        args: [params.to as Address, params.amount],
+        gas: 65_000n,
+      });
+
+      setState(s => ({ ...s, isPending: true, hash }));
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      setState({ isLoading: false, isPending: false, hash, error: null });
+      return receipt;
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.message || 'Token transfer failed';
+      setState({ isLoading: false, isPending: false, hash: null, error: msg });
+      throw err;
+    }
+  }, [wallet]);
+
+  const reset = useCallback(() => setState(INITIAL_STATE), []);
+  return { ...state, execute, reset };
+}
+
 /** Create an on-chain creator profile */
 export function useCreateProfile() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);

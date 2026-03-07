@@ -2,17 +2,19 @@ import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Copy, Check, ExternalLink, X,
-  Plus, Wallet, ChevronDown,
+  Plus, Wallet, ChevronDown, Send, ArrowUpRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvaxBalance, useOnChainTokens } from '@/hooks/useContracts';
+import { useSendAVAX, useSendToken } from '@/hooks/useTransactions';
 import { CHAINS, ACTIVE_NETWORK } from '@/config/wagmi';
 import { ERC20ABI } from '@/config/abis';
 import { publicClient } from '@/config/client';
 import { toast } from 'sonner';
-import { formatUnits } from 'viem';
+import { formatUnits, parseUnits } from 'viem';
 import { formatPrice } from '@/utils/format';
 
 interface TokenHolding {
@@ -38,6 +40,10 @@ function AddressAvatar({ address, size = 40 }: { address: string; size?: number 
   );
 }
 
+function isValidAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
 export function ProfilePage() {
   const { address: routeAddress } = useParams();
   const { user, isAuthenticated, signInWithX, isLoading } = useAuth();
@@ -53,13 +59,23 @@ export function ProfilePage() {
   const [holdingsLoading, setHoldingsLoading] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+
+  // Send state
+  const [sendMode, setSendMode] = useState<'avax' | 'token'>('avax');
+  const [sendTo, setSendTo] = useState('');
+  const [sendAmount, setSendAmount] = useState('');
+  const [selectedToken, setSelectedToken] = useState('');
+
+  const { isLoading: sendingAvax, isPending: pendingAvax, execute: executeSendAVAX } = useSendAVAX();
+  const { isLoading: sendingToken, isPending: pendingToken, execute: executeSendToken } = useSendToken();
+  const isSending = sendingAvax || sendingToken;
 
   useEffect(() => {
     if (!profileAddress || allTokens.length === 0) { setHoldings([]); return; }
     let cancelled = false;
     (async () => {
       setHoldingsLoading(true);
-      // Batch all balanceOf calls in parallel instead of sequential
       const balanceResults = await Promise.allSettled(
         allTokens.map(async (token) => {
           const raw = await publicClient.readContract({
@@ -98,6 +114,47 @@ export function ProfilePage() {
       setAddressCopied(true);
       toast.success('Address copied!');
       setTimeout(() => setAddressCopied(false), 2000);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!sendTo.trim() || !isValidAddress(sendTo.trim())) {
+      toast.error('Enter a valid wallet address');
+      return;
+    }
+    const amount = parseFloat(sendAmount);
+    if (!amount || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+
+    try {
+      if (sendMode === 'avax') {
+        if (amount > balance - 0.001) {
+          toast.error('Insufficient AVAX (need gas)');
+          return;
+        }
+        await executeSendAVAX({ to: sendTo.trim(), amount });
+        toast.success(`Sent ${amount} AVAX`, { description: `To ${truncAddr(sendTo.trim())}` });
+      } else {
+        if (!selectedToken) {
+          toast.error('Select a token to send');
+          return;
+        }
+        const holding = holdings.find(h => h.address === selectedToken);
+        if (!holding || amount > holding.balance) {
+          toast.error('Insufficient token balance');
+          return;
+        }
+        const amountWei = parseUnits(amount.toString(), 18);
+        await executeSendToken({ tokenAddress: selectedToken, to: sendTo.trim(), amount: amountWei });
+        toast.success(`Sent ${amount} ${holding.symbol}`, { description: `To ${truncAddr(sendTo.trim())}` });
+      }
+      setSendTo('');
+      setSendAmount('');
+      setShowSend(false);
+    } catch (err: any) {
+      toast.error('Transfer failed', { description: err?.shortMessage || err?.message });
     }
   };
 
@@ -191,13 +248,18 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Own-profile actions (compact) ── */}
+        {/* ── Own-profile actions ── */}
         {isOwnProfile && (
           <div className="flex items-center gap-2 mb-4">
-            <button onClick={() => setShowDeposit(!showDeposit)}
+            <button onClick={() => { setShowDeposit(!showDeposit); if (!showDeposit) setShowSend(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cre8-red/10 border border-cre8-red/20 text-cre8-red text-xs font-semibold hover:bg-cre8-red/20 transition-colors">
               <Wallet className="w-3.5 h-3.5" />Deposit
               <ChevronDown className={`w-3 h-3 transition-transform ${showDeposit ? 'rotate-180' : ''}`} />
+            </button>
+            <button onClick={() => { setShowSend(!showSend); if (!showSend) setShowDeposit(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
+              <Send className="w-3.5 h-3.5" />Send
+              <ChevronDown className={`w-3 h-3 transition-transform ${showSend ? 'rotate-180' : ''}`} />
             </button>
             <Link to="/create"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
@@ -229,6 +291,104 @@ export function ProfilePage() {
                 Get Test AVAX <ExternalLink className="w-3 h-3 ml-1.5" />
               </Button>
             </a>
+          </div>
+        )}
+
+        {/* Send panel (collapsible) */}
+        {isOwnProfile && showSend && (
+          <div className="surface p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-white text-sm">Send</h3>
+              <button onClick={() => setShowSend(false)} className="text-dim hover:text-white"><X className="w-3.5 h-3.5" /></button>
+            </div>
+
+            {/* AVAX / Token toggle */}
+            <div className="flex gap-1 p-0.5 bg-cre8-base rounded-lg mb-3">
+              <button onClick={() => setSendMode('avax')}
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${sendMode === 'avax' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white'}`}>
+                AVAX
+              </button>
+              <button onClick={() => setSendMode('token')}
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${sendMode === 'token' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white'}`}>
+                Token
+              </button>
+            </div>
+
+            {/* Token selector (only in token mode) */}
+            {sendMode === 'token' && (
+              <div className="mb-3">
+                <label className="text-[11px] text-dim font-medium mb-1 block">Select token</label>
+                {holdings.length === 0 ? (
+                  <p className="text-xs text-dim py-2">No tokens to send</p>
+                ) : (
+                  <select value={selectedToken} onChange={(e) => setSelectedToken(e.target.value)}
+                    className="w-full bg-cre8-base border border-white/[0.06] rounded-lg px-3 py-2 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:border-cre8-red/40">
+                    <option value="">Choose a token...</option>
+                    {holdings.map(h => (
+                      <option key={h.address} value={h.address}>
+                        {h.symbol} — {h.balance < 1000 ? h.balance.toFixed(2) : h.balance < 1e6 ? `${(h.balance / 1e3).toFixed(1)}K` : `${(h.balance / 1e6).toFixed(2)}M`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* Recipient address */}
+            <div className="mb-3">
+              <label className="text-[11px] text-dim font-medium mb-1 block">Recipient address</label>
+              <Input value={sendTo} onChange={(e) => setSendTo(e.target.value)}
+                placeholder="0x..." className="bg-cre8-base border-white/[0.06] text-white font-mono text-xs" />
+            </div>
+
+            {/* Amount */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] text-dim font-medium">Amount</label>
+                <button onClick={() => {
+                  if (sendMode === 'avax') {
+                    setSendAmount(Math.max(0, balance - 0.01).toFixed(4));
+                  } else {
+                    const h = holdings.find(t => t.address === selectedToken);
+                    if (h) setSendAmount(h.balance.toString());
+                  }
+                }} className="text-[10px] text-cre8-red hover:text-cre8-red/80 font-semibold">
+                  MAX
+                </button>
+              </div>
+              <div className="relative">
+                <Input value={sendAmount} onChange={(e) => setSendAmount(e.target.value)}
+                  type="number" step="any" min="0" placeholder="0.0"
+                  className="bg-cre8-base border-white/[0.06] text-white font-mono text-sm pr-16" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-dim font-semibold">
+                  {sendMode === 'avax' ? 'AVAX' : (holdings.find(h => h.address === selectedToken)?.symbol || 'TOKEN')}
+                </span>
+              </div>
+              {sendMode === 'avax' && (
+                <p className="text-[10px] text-dim mt-1">Available: {balance.toFixed(4)} AVAX</p>
+              )}
+              {sendMode === 'token' && selectedToken && (
+                <p className="text-[10px] text-dim mt-1">
+                  Available: {holdings.find(h => h.address === selectedToken)?.balance.toFixed(2) || '0'} {holdings.find(h => h.address === selectedToken)?.symbol}
+                </p>
+              )}
+            </div>
+
+            {/* Send button */}
+            <Button onClick={handleSend} disabled={isSending || !sendTo || !sendAmount}
+              className="w-full bg-cre8-red hover:bg-cre8-red/90 text-white rounded-lg text-xs font-semibold">
+              {isSending ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  {pendingAvax || pendingToken ? 'Confirming...' : 'Sending...'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  Send {sendMode === 'avax' ? 'AVAX' : 'Token'}
+                </span>
+              )}
+            </Button>
           </div>
         )}
 
