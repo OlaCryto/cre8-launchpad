@@ -82,9 +82,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <MobileGate />
-      <div className="hidden md:flex min-h-screen bg-cre8-base">
+      <div className="hidden md:block min-h-screen bg-cre8-base overflow-x-hidden">
         <Sidebar />
-        <main className="flex-1 ml-[68px]">
+        <main className="ml-[68px]">
           {children}
         </main>
       </div>
