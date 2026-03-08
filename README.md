@@ -110,7 +110,7 @@ Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. Th
 ### Backend
 - **Express.js** + TypeScript
 - **PostgreSQL** for persistence
-- **X (Twitter) OAuth 2.0 PKCE** for authentication
+- **Google OAuth 2.0** for authentication
 - **Background price indexer** for historical data
 
 ### Infrastructure
@@ -174,12 +174,12 @@ cre8/
 │   │       ├── components/      # Sidebar, TradingChart, UI components
 │   │       ├── pages/           # Home, Create, TokenDetail, Dashboard, Profile
 │   │       ├── hooks/           # useContracts, useForge, useTransactions
-│   │       ├── contexts/        # AuthContext (Twitter OAuth)
+│   │       ├── contexts/        # AuthContext (Google OAuth)
 │   │       └── config/          # ABIs, contract addresses, chain config
 │   └── server/                  # Express.js backend
 │       ├── routes/              # API routes
 │       ├── middleware/          # Auth, validation, rate limiting
-│       ├── services/            # Price indexer, Twitter OAuth
+│       ├── services/            # Price indexer, Google OAuth
 │       └── database.ts          # PostgreSQL schema + queries
 └── foundry.toml
 ```
@@ -196,7 +196,7 @@ cre8/
 - [x] 1-year LP token locking on graduation
 - [x] Anti-bot protection (cooldown, max tx/wallet, launch protection)
 - [x] Creator verification system with dashboard
-- [x] X (Twitter) OAuth 2.0 authentication
+- [x] Google OAuth 2.0 authentication
 - [x] Comment threads on token pages
 - [x] Creator follow system + notifications
 - [x] Price charts with historical data
@@ -213,7 +213,7 @@ cre8/
 3. Click **Create** to launch a token (costs 0.02 AVAX)
 4. Your token appears instantly on the homepage with a bonding curve
 5. Buy/sell tokens — price moves along the curve
-6. Sign in with X to comment, follow creators, and access the Creator Dashboard
+6. Sign in with Google to comment, follow creators, and access the Creator Dashboard
 
 ---
 
