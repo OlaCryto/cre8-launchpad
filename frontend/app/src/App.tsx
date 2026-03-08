@@ -57,22 +57,38 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
 const queryClient = new QueryClient();
 
-function DashboardLayout({ children }: { children: React.ReactNode }) {
+function MobileGate() {
   return (
-    <div className="flex min-h-screen bg-cre8-base">
-      {/* Sidebar — hidden on mobile, visible md+ */}
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
-      {/* Main content — offset for sidebar */}
-      <main className="flex-1 md:ml-[68px] pb-16 md:pb-0">
-        {children}
-      </main>
-      {/* Mobile bottom nav */}
-      <div className="md:hidden">
-        <Sidebar />
+    <div className="flex md:hidden min-h-screen bg-cre8-base items-center justify-center p-6">
+      <div className="text-center max-w-sm">
+        <div className="w-20 h-20 rounded-2xl bg-cre8-red/10 flex items-center justify-center mx-auto mb-6">
+          <svg className="w-10 h-10 text-cre8-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="5" y="2" width="14" height="20" rx="2" />
+            <line x1="12" y1="18" x2="12" y2="18.01" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-bold text-white mb-3">Desktop Only</h1>
+        <p className="text-dim text-sm leading-relaxed mb-6">
+          Cre8 is currently optimized for desktop and laptop screens.
+          Please visit on a larger screen for the best experience.
+        </p>
+        <div className="text-dim/40 text-xs">cre8app.net</div>
       </div>
     </div>
+  );
+}
+
+function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <MobileGate />
+      <div className="hidden md:flex min-h-screen bg-cre8-base">
+        <Sidebar />
+        <main className="flex-1 ml-[68px]">
+          {children}
+        </main>
+      </div>
+    </>
   );
 }
 
