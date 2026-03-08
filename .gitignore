@@ -63,7 +63,7 @@ Cre8_Competition_Plan*.docx
 frontend/app/info.md
 
 # Claude Code / MCP config
-.claude/settings.local.json
+.claude/
 .mcp.json
 
 # Misc files
