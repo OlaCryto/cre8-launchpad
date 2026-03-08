@@ -952,15 +952,16 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
     };
   }
 
-  // Initial load — fetch last 24h of Buy/Sell events
+  // Initial load — fetch last 7d of Buy/Sell events (wait for tokens to be available)
   useEffect(() => {
+    if (tokens.length === 0) return;
     let cancelled = false;
 
     async function load() {
       try {
         const currentBlock = await publicClient.getBlockNumber();
-        const ONE_DAY = 43_200n;
-        const startBlock = currentBlock > ONE_DAY ? currentBlock - ONE_DAY : 0n;
+        const SEVEN_DAYS = 302_400n; // ~7 days at 2s blocks
+        const startBlock = currentBlock > SEVEN_DAYS ? currentBlock - SEVEN_DAYS : 0n;
 
         const CHUNK = 2000n;
         const ranges: { from: bigint; to: bigint }[] = [];
@@ -997,7 +998,7 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
 
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [tokens.length]); // Re-run when tokens are first loaded
 
   // Re-resolve token symbols when the tokens list changes
   useEffect(() => {
