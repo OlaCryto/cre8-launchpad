@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Zap,
+  ArrowLeft, Zap, Shield,
   Twitter, Globe, MessageCircle, LinkIcon,
-  ChevronDown, ChevronUp, ImageIcon, Info, AlertCircle,
+  ChevronDown, ChevronUp, ImageIcon, Info, AlertCircle, X, Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { FEES, TOKEN_CONSTANTS } from '@/config/wagmi';
 import { useCreateTokenAndBuy } from '@/hooks/useTransactions';
+import { useCreateForgeToken } from '@/hooks/useForge';
 import { useAvaxBalance } from '@/hooks/useContracts';
 import { uploadTokenImage } from '@/utils/uploadImage';
 import { registerTokenCreator } from '@/utils/registerToken';
@@ -20,12 +21,21 @@ export function CreateTokenPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading, signInWithX, user } = useAuth();
   const { isLoading: txLoading, isPending, execute: createToken } = useCreateTokenAndBuy();
+  const { isLoading: forgeTxLoading, isPending: forgeIsPending, execute: createForgeToken } = useCreateForgeToken();
   const avaxBalance = useAvaxBalance(user?.wallet?.address);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [socialsOpen, setSocialsOpen] = useState(false);
   const [initialBuy, setInitialBuy] = useState(0);
+  const [forgeMode, setForgeMode] = useState(false);
+  const [whitelistDuration, setWhitelistDuration] = useState(5); // minutes
+  const [maxWalletAvax, setMaxWalletAvax] = useState(1);
+  const [maxTxAvax, setMaxTxAvax] = useState(0.5);
+  const [whitelistInput, setWhitelistInput] = useState('');
+  const [whitelistAddresses, setWhitelistAddresses] = useState<string[]>([]);
+  const [blacklistInput, setBlacklistInput] = useState('');
+  const [blacklistAddresses, setBlacklistAddresses] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     ticker: '',
@@ -34,6 +44,24 @@ export function CreateTokenPage() {
     telegram: '',
     website: '',
   });
+
+  const isAddressValid = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
+
+  const addWhitelistAddr = () => {
+    const addr = whitelistInput.trim();
+    if (!isAddressValid(addr)) { toast.error('Invalid address'); return; }
+    if (whitelistAddresses.includes(addr)) { toast.error('Already added'); return; }
+    setWhitelistAddresses(prev => [...prev, addr]);
+    setWhitelistInput('');
+  };
+
+  const addBlacklistAddr = () => {
+    const addr = blacklistInput.trim();
+    if (!isAddressValid(addr)) { toast.error('Invalid address'); return; }
+    if (blacklistAddresses.includes(addr)) { toast.error('Already added'); return; }
+    setBlacklistAddresses(prev => [...prev, addr]);
+    setBlacklistInput('');
+  };
 
   const update = (fields: Partial<typeof formData>) => setFormData(prev => ({ ...prev, ...fields }));
 
@@ -101,7 +129,55 @@ export function CreateTokenPage() {
     }
   };
 
-  const handleSubmit = handleEasySubmit;
+  const handleForgeSubmit = async () => {
+    if (!formData.name.trim()) { toast.error('Coin name is required'); return; }
+    if (!formData.ticker.trim()) { toast.error('Ticker is required'); return; }
+
+    try {
+      const maxBuyPercent = 20;
+      const buyPercent = maxBuy > 0 ? Math.min((initialBuy / maxBuy) * maxBuyPercent, maxBuyPercent) : 0;
+      const creatorBuyBps = Math.round(buyPercent * 100);
+
+      const receipt = await createForgeToken({
+        name: formData.name,
+        symbol: formData.ticker.replace('$', ''),
+        creatorBuyBps,
+        creatorBuyAvax: initialBuy,
+        whitelistDuration: whitelistDuration * 60, // convert minutes to seconds
+        maxWalletAvax,
+        maxTxAvax,
+        whitelistAddresses,
+        blacklistAddresses,
+      });
+
+      if (receipt.tokenAddress) {
+        if (imagePreview?.startsWith('data:')) {
+          uploadTokenImage(receipt.tokenAddress, imagePreview);
+        }
+        registerTokenCreator(
+          receipt.tokenAddress,
+          formData.name,
+          formData.ticker.replace('$', ''),
+          receipt.blockNumber,
+          {
+            description: formData.description,
+            twitter: formData.twitter,
+            telegram: formData.telegram,
+            website: formData.website,
+          },
+        );
+      }
+
+      toast.success('Forge token created!', { description: `TX: ${receipt.transactionHash.slice(0, 14)}...` });
+      navigate(receipt.tokenAddress ? `/token/${receipt.tokenAddress}` : '/');
+    } catch (err: any) {
+      toast.error('Forge token creation failed', { description: err?.shortMessage || err?.message });
+    }
+  };
+
+  const handleSubmit = forgeMode ? handleForgeSubmit : handleEasySubmit;
+  const isSubmitting = forgeMode ? forgeTxLoading : txLoading;
+  const isConfirming = forgeMode ? forgeIsPending : isPending;
 
   return (
     <div className="min-h-screen pb-20">
@@ -215,6 +291,117 @@ export function CreateTokenPage() {
               </div>
             </div>
 
+            {/* ── Forge Mode Toggle ── */}
+            <div className="surface p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  <h3 className="text-sm font-bold text-white">Forge Mode</h3>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/15 text-amber-400 rounded font-medium">Anti-Bot</span>
+                </div>
+                <button onClick={() => setForgeMode(!forgeMode)}
+                  className={`w-10 h-5 rounded-full relative transition-colors ${forgeMode ? 'bg-amber-500/60' : 'bg-white/[0.1]'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${forgeMode ? 'right-0.5 bg-white' : 'left-0.5 bg-white/50'}`} />
+                </button>
+              </div>
+              <p className="text-xs text-dim leading-relaxed">
+                Protect your launch from bots and snipers. Set a whitelist phase where only approved wallets can buy within AVAX limits.
+              </p>
+
+              {forgeMode && (
+                <div className="space-y-4 pt-2 border-t border-white/[0.06]">
+                  {/* Whitelist Duration */}
+                  <div>
+                    <label className="block text-sm text-dim mb-1.5">Whitelist Duration</label>
+                    <div className="flex items-center gap-3">
+                      <Input type="number" min={1} max={60} value={whitelistDuration}
+                        onChange={(e) => setWhitelistDuration(Math.min(60, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="bg-cre8-base border-white/[0.06] text-white rounded-lg h-10 w-24 font-mono focus-visible:ring-1 focus-visible:ring-white/20" />
+                      <span className="text-sm text-dim">minutes (1-60)</span>
+                    </div>
+                    <input type="range" min={1} max={60} value={whitelistDuration}
+                      onChange={(e) => setWhitelistDuration(parseInt(e.target.value))}
+                      className="w-full mt-2 accent-amber-500 h-1.5 rounded-full appearance-none bg-white/[0.06] cursor-pointer
+                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                        [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:border-2
+                        [&::-webkit-slider-thumb]:border-cre8-base" />
+                  </div>
+
+                  {/* Max Wallet + Max Tx */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm text-dim mb-1.5">Max Wallet (AVAX)</label>
+                      <Input type="number" min={0.01} step={0.1} value={maxWalletAvax}
+                        onChange={(e) => setMaxWalletAvax(parseFloat(e.target.value) || 0.01)}
+                        className="bg-cre8-base border-white/[0.06] text-white rounded-lg h-10 font-mono focus-visible:ring-1 focus-visible:ring-white/20" />
+                      <p className="text-[10px] text-dim/50 mt-1">Max AVAX a wallet can buy</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-dim mb-1.5">Max Tx (AVAX)</label>
+                      <Input type="number" min={0.01} step={0.1} value={maxTxAvax}
+                        onChange={(e) => setMaxTxAvax(parseFloat(e.target.value) || 0.01)}
+                        className="bg-cre8-base border-white/[0.06] text-white rounded-lg h-10 font-mono focus-visible:ring-1 focus-visible:ring-white/20" />
+                      <p className="text-[10px] text-dim/50 mt-1">Max AVAX per transaction</p>
+                    </div>
+                  </div>
+
+                  {/* Whitelist Addresses */}
+                  <div>
+                    <label className="block text-sm text-dim mb-1.5">Whitelist Addresses <span className="text-dim/40">(Optional)</span></label>
+                    <div className="flex gap-2">
+                      <Input placeholder="0x..." value={whitelistInput}
+                        onChange={(e) => setWhitelistInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addWhitelistAddr()}
+                        className="bg-cre8-base border-white/[0.06] text-white placeholder:text-dim/40 rounded-lg h-10 font-mono text-xs focus-visible:ring-1 focus-visible:ring-white/20" />
+                      <Button onClick={addWhitelistAddr} variant="outline" size="sm"
+                        className="shrink-0 border-white/[0.06] text-dim hover:text-white h-10 px-3">
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {whitelistAddresses.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {whitelistAddresses.map((addr, i) => (
+                          <div key={i} className="flex items-center justify-between bg-cre8-base rounded-lg px-3 py-1.5">
+                            <span className="text-xs text-green-400 font-mono">{addr.slice(0, 10)}...{addr.slice(-6)}</span>
+                            <button onClick={() => setWhitelistAddresses(prev => prev.filter((_, j) => j !== i))} className="text-dim hover:text-white">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Blacklist Addresses */}
+                  <div>
+                    <label className="block text-sm text-dim mb-1.5">Blacklist Addresses <span className="text-dim/40">(Optional)</span></label>
+                    <div className="flex gap-2">
+                      <Input placeholder="0x..." value={blacklistInput}
+                        onChange={(e) => setBlacklistInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addBlacklistAddr()}
+                        className="bg-cre8-base border-white/[0.06] text-white placeholder:text-dim/40 rounded-lg h-10 font-mono text-xs focus-visible:ring-1 focus-visible:ring-white/20" />
+                      <Button onClick={addBlacklistAddr} variant="outline" size="sm"
+                        className="shrink-0 border-white/[0.06] text-dim hover:text-white h-10 px-3">
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {blacklistAddresses.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {blacklistAddresses.map((addr, i) => (
+                          <div key={i} className="flex items-center justify-between bg-cre8-base rounded-lg px-3 py-1.5">
+                            <span className="text-xs text-red-400 font-mono">{addr.slice(0, 10)}...{addr.slice(-6)}</span>
+                            <button onClick={() => setBlacklistAddresses(prev => prev.filter((_, j) => j !== i))} className="text-dim hover:text-white">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* ── Initial Purchase ── */}
             {isAuthenticated && (
               <div className="surface p-5 space-y-4">
@@ -273,11 +460,13 @@ export function CreateTokenPage() {
 
             {/* Submit / Auth */}
             {isAuthenticated ? (
-              <Button onClick={handleSubmit} disabled={txLoading || !formData.name.trim() || !formData.ticker.trim()}
-                className="w-full bg-cre8-red hover:bg-cre8-red/90 text-white font-bold rounded-xl py-5 text-base disabled:opacity-40">
-                {txLoading ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />{isPending ? 'Confirming...' : 'Creating...'}</>
-                ) : (initialBuy > 0 ? 'Create and Buy' : 'Create coin')
+              <Button onClick={handleSubmit} disabled={isSubmitting || !formData.name.trim() || !formData.ticker.trim()}
+                className={`w-full ${forgeMode ? 'bg-amber-500 hover:bg-amber-500/90' : 'bg-cre8-red hover:bg-cre8-red/90'} text-white font-bold rounded-xl py-5 text-base disabled:opacity-40`}>
+                {isSubmitting ? (
+                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />{isConfirming ? 'Confirming...' : 'Creating...'}</>
+                ) : forgeMode
+                  ? (initialBuy > 0 ? 'Forge Launch + Buy' : 'Forge Launch')
+                  : (initialBuy > 0 ? 'Create and Buy' : 'Create coin')
                 }
               </Button>
             ) : (
