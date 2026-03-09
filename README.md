@@ -81,13 +81,16 @@ Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. Th
 
 ## Deployed Contracts (Fuji Testnet)
 
+All contracts are **verified and open-source** on [SnowScan](https://testnet.snowscan.xyz), [Snowtrace](https://testnet.snowtrace.io), and [Routescan](https://testnet.routescan.io).
+
 | Contract | Address |
 |----------|---------|
-| **Cre8Manager (Proxy)** | [`0x4e972F92461AE6bc080411723C856996Dbe1591E`](https://testnet.snowtrace.io/address/0x4e972F92461AE6bc080411723C856996Dbe1591E) |
-| LiquidityManager | [`0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47`](https://testnet.snowtrace.io/address/0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47) |
-| LiquidityLocker | [`0xa0fC9fFa9595D9976341C9d998819fD33fc351c2`](https://testnet.snowtrace.io/address/0xa0fC9fFa9595D9976341C9d998819fD33fc351c2) |
+| **Cre8Manager (Proxy)** | [`0x4e972F92461AE6bc080411723C856996Dbe1591E`](https://testnet.snowscan.xyz/address/0x4e972F92461AE6bc080411723C856996Dbe1591E) |
+| Cre8Manager (Implementation) | [`0x0DA5F904533064c89d7d90ef23bB75b3c7379FF6`](https://testnet.snowscan.xyz/address/0x0DA5F904533064c89d7d90ef23bB75b3c7379FF6) |
+| LiquidityManager | [`0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47`](https://testnet.snowscan.xyz/address/0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47) |
+| LiquidityLocker | [`0xa0fC9fFa9595D9976341C9d998819fD33fc351c2`](https://testnet.snowscan.xyz/address/0xa0fC9fFa9595D9976341C9d998819fD33fc351c2) |
 
-**DEX Router:** TraderJoe Fuji [`0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901`](https://testnet.snowtrace.io/address/0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901)
+**DEX Router:** TraderJoe Fuji [`0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901`](https://testnet.snowscan.xyz/address/0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901)
 
 ---
 
