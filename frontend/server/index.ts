@@ -17,6 +17,7 @@ import notificationRoutes from './routes/notifications.js';
 import presaleRoutes from './routes/presales.js';
 import tokenRoutes from './routes/tokens.js';
 import { startPriceIndexer } from './services/priceIndexer.js';
+import { startTradeWatcher } from './services/tradeWatcher.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -109,11 +110,12 @@ function validateEnv() {
 async function start() {
   validateEnv();
   await initDatabase();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Cre8 server running on http://localhost:${PORT}`);
     console.log(`Frontend URL: ${FRONTEND_URL}`);
     console.log(`Database: PostgreSQL`);
     startPriceIndexer();
+    startTradeWatcher(server);
   });
 }
 

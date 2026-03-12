@@ -180,21 +180,21 @@ export function CreateTokenPage() {
   const isConfirming = forgeMode ? forgeIsPending : isPending;
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-6">
+    <div className="min-h-screen pb-24 md:pb-20">
+      <div className="max-w-[1100px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-5 md:mb-8">
           <Link to="/" className="text-dim hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-white">Create new coin</h1>
+            <h1 className="text-lg md:text-xl font-bold text-white">Create new coin</h1>
             <p className="text-xs text-dim mt-0.5">Instant launch on the bonding curve</p>
           </div>
         </div>
 
         {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 md:gap-8">
           {/* ── Left: Form ── */}
           <div className="space-y-6">
             {/* Section header */}
@@ -204,7 +204,7 @@ export function CreateTokenPage() {
             </div>
 
             {/* Name + Ticker row */}
-            <div className="surface p-5 space-y-5">
+            <div className="surface p-3.5 md:p-5 space-y-4 md:space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-4">
                 <div>
                   <label className="block text-sm text-dim mb-1.5">Coin name</label>

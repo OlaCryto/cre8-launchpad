@@ -153,8 +153,8 @@ export function InboxPage() {
   }
 
   return (
-    <div className="min-h-screen pb-12">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-2">
+    <div className="min-h-screen pb-24 md:pb-12">
+      <div className="max-w-2xl mx-auto px-3 sm:px-6 pt-2">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">

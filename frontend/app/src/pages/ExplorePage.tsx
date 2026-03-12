@@ -43,10 +43,10 @@ export function ExplorePage() {
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-20 md:pb-0">
       {/* Header Stats */}
       <div className="border-b border-white/[0.06] bg-cre8-surface/50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 py-3 md:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-green-400">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -60,7 +60,7 @@ export function ExplorePage() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+      <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 md:py-6">
         {/* Search */}
         <div className="relative mb-6">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-dim" />
@@ -122,10 +122,10 @@ export function ExplorePage() {
               <Link
                 key={token.address}
                 to={`/token/${token.address}`}
-                className="flex items-center gap-4 p-4 surface-interactive cursor-pointer"
+                className="flex items-center gap-3 md:gap-4 p-3 md:p-4 surface-interactive cursor-pointer"
               >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cre8-red/15 to-violet-500/15 flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg font-bold text-white">{token.symbol.charAt(0)}</span>
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-cre8-red/15 to-violet-500/15 flex items-center justify-center flex-shrink-0">
+                  <span className="text-base md:text-lg font-bold text-white">{token.symbol.charAt(0)}</span>
                 </div>
 
                 <div className="flex-1 min-w-0">

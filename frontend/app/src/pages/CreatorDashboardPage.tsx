@@ -366,8 +366,8 @@ export function CreatorDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen pb-12">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-2">
+    <div className="min-h-screen pb-24 md:pb-12">
+      <div className="max-w-4xl mx-auto px-3 sm:px-6 pt-2">
 
         {/* Sub-views */}
         {view === 'edit' && profile ? (

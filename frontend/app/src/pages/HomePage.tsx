@@ -338,7 +338,7 @@ export function HomePage() {
       {/* Trade Ticker */}
       {animateTicker && <TradeTicker trades={globalTrades} tokenSymbols={tokenSymbols} />}
 
-      <div className="p-4 md:p-6 lg:p-8 pb-24">
+      <div className="p-3 md:p-6 lg:p-8 pb-28 md:pb-24">
         <div className="max-w-[1400px] mx-auto space-y-5">
 
           {/* King of the Hill */}
@@ -351,22 +351,22 @@ export function HomePage() {
                 <IconCrown size={14} className="text-amber-400" />
                 <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">King of the Hill</span>
               </div>
-              <div className="flex items-center gap-4 p-4">
-                <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500/20 to-cre8-red/20 flex items-center justify-center overflow-hidden border border-white/[0.08] shrink-0">
+              <div className="flex items-center gap-3 md:gap-4 p-3 md:p-4">
+                <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-gradient-to-br from-amber-500/20 to-cre8-red/20 flex items-center justify-center overflow-hidden border border-white/[0.08] shrink-0">
                   <TokenImage tokenAddress={kingToken.address} symbol={kingToken.symbol} onChainImageURI={kingToken.imageURI}
                     className="w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-2xl font-bold text-white/20" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-lg font-bold text-white">${kingToken.symbol}</h2>
-                    <span className="text-sm text-dim">{kingToken.name}</span>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h2 className="text-base md:text-lg font-bold text-white">${kingToken.symbol}</h2>
+                    <span className="text-xs md:text-sm text-dim">{kingToken.name}</span>
                     {kingToken.isGraduated && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded font-medium">Graduated</span>}
                   </div>
                   {kingToken.description && <p className="text-xs text-dim/70 line-clamp-1 mb-1.5">{kingToken.description}</p>}
-                  <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-3 md:gap-4 text-[11px] md:text-xs flex-wrap">
                     <span className="text-dim">MCap: <span className="text-white font-mono font-semibold">{formatMcap(kingToken.reserveBalance)}</span></span>
                     <span className="text-dim">Price: <span className="text-white font-mono">{formatPrice(kingToken.currentPrice)}</span></span>
-                    <span className="text-dim">Reserve: <span className="text-white font-mono">{kingToken.reserveBalance.toFixed(2)} AVAX</span></span>
+                    <span className="text-dim hidden sm:inline">Reserve: <span className="text-white font-mono">{kingToken.reserveBalance.toFixed(2)} AVAX</span></span>
                   </div>
                 </div>
                 <div className="hidden sm:flex items-center gap-2 shrink-0">
@@ -410,7 +410,7 @@ export function HomePage() {
 
           {/* Token Grid / List */}
           {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3">
               {isLoading ? Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="surface overflow-hidden">
                   <div className="aspect-[4/3] skeleton rounded-none" />
@@ -587,8 +587,8 @@ export function HomePage() {
         </div>
       </div>
 
-      {/* ── Bottom Toolbar (fixed) ── */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 md:left-[calc(50%+34px)] z-40 flex items-center gap-1 bg-cre8-surface/95 backdrop-blur-md border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
+      {/* ── Bottom Toolbar (fixed) — above mobile nav ── */}
+      <div className="fixed bottom-[72px] md:bottom-4 left-1/2 -translate-x-1/2 md:left-[calc(50%+34px)] z-40 flex items-center gap-1 bg-cre8-surface/95 backdrop-blur-md border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl">
         {/* Filter toggle */}
         <div className="relative">
           <button onClick={() => { setFilterOpen(!filterOpen); setSettingsOpen(false); }}
@@ -620,13 +620,13 @@ export function HomePage() {
           )}
         </div>
 
-        {/* View Mode */}
+        {/* View Mode — list hidden on mobile (table doesn't fit) */}
         <button onClick={() => setViewMode('grid')}
           className={`p-2 rounded-xl transition-colors ${viewMode === 'grid' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="Grid view">
           <IconLayoutGrid size={18} />
         </button>
         <button onClick={() => setViewMode('list')}
-          className={`p-2 rounded-xl transition-colors ${viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="List view">
+          className={`hidden md:block p-2 rounded-xl transition-colors ${viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="List view">
           <IconLayoutList size={18} />
         </button>
 

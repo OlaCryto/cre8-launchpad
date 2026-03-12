@@ -310,24 +310,24 @@ export function TokenDetailPage() {
     <div className="min-h-screen">
       {/* ── Token Header ── */}
       <div className="border-b border-white/[0.06]">
-        <div className="max-w-[1400px] mx-auto px-4 py-4">
-          <div className="flex items-start gap-4">
+        <div className="max-w-[1400px] mx-auto px-3 md:px-4 py-3 md:py-4">
+          <div className="flex items-start gap-2.5 md:gap-4">
             {/* Back */}
             <Link to="/" className="text-dim hover:text-white transition-colors mt-1 shrink-0">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </Link>
 
             {/* Token Avatar */}
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cre8-red/20 to-violet-500/20 flex items-center justify-center border border-white/[0.08] overflow-hidden shrink-0">
+            <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl bg-gradient-to-br from-cre8-red/20 to-violet-500/20 flex items-center justify-center border border-white/[0.08] overflow-hidden shrink-0">
               <TokenImage tokenAddress={tokenAddress!} symbol={displaySymbol} onChainImageURI={launchData?.imageURI}
-                className="w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-xl font-bold text-white" />
+                className="w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-base md:text-xl font-bold text-white" />
             </div>
 
             {/* Token Info */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold text-white">{displayName}</h1>
-                <span className="text-sm text-dim">{displaySymbol}</span>
+              <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                <h1 className="text-base md:text-xl font-bold text-white truncate">{displayName}</h1>
+                <span className="text-xs md:text-sm text-dim">{displaySymbol}</span>
                 {launchData?.isGraduated && (
                   <>
                     <span className="text-[10px] px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-semibold">Graduated</span>
@@ -335,7 +335,7 @@ export function TokenDetailPage() {
                       href={`https://traderjoexyz.com/avalanche/trade?inputCurrency=AVAX&outputCurrency=${tokenAddress}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] px-2 py-0.5 bg-blue-500/15 text-blue-400 rounded-full font-semibold hover:bg-blue-500/25 transition-colors flex items-center gap-1"
+                      className="hidden sm:flex text-[10px] px-2 py-0.5 bg-blue-500/15 text-blue-400 rounded-full font-semibold hover:bg-blue-500/25 transition-colors items-center gap-1"
                     >
                       Trade on TraderJoe <ExternalLink className="w-2.5 h-2.5" />
                     </a>
@@ -343,14 +343,14 @@ export function TokenDetailPage() {
                       href={`https://dexscreener.com/avalanche/${tokenAddress}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] px-2 py-0.5 bg-green-500/15 text-green-400 rounded-full font-semibold hover:bg-green-500/25 transition-colors flex items-center gap-1"
+                      className="hidden sm:flex text-[10px] px-2 py-0.5 bg-green-500/15 text-green-400 rounded-full font-semibold hover:bg-green-500/25 transition-colors items-center gap-1"
                     >
                       DexScreener <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-dim">
+              <div className="flex items-center gap-1.5 md:gap-2 mt-0.5 md:mt-1 text-[11px] md:text-xs text-dim">
                 <AddressAvatar address={displayCreator} size={16} />
                 <a href={`${explorer}/address/${displayCreator}`} target="_blank" rel="noopener noreferrer" className="font-mono hover:text-white transition-colors">
                   {displayCreator.slice(0, 6)}...{displayCreator.slice(-4)}
@@ -361,15 +361,15 @@ export function TokenDetailPage() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
               <button onClick={handleShare}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] text-sm text-dim hover:text-white hover:bg-white/[0.04] transition-colors">
-                <Share2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">Share</span>
+                className="flex items-center gap-1.5 p-1.5 md:px-3 md:py-1.5 rounded-lg border border-white/[0.08] text-sm text-dim hover:text-white hover:bg-white/[0.04] transition-colors">
+                <Share2 className="w-3.5 h-3.5" /><span className="hidden md:inline">Share</span>
               </button>
               <button onClick={copyAddress}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] text-sm text-dim hover:text-white hover:bg-white/[0.04] transition-colors font-mono">
+                className="flex items-center gap-1.5 p-1.5 md:px-3 md:py-1.5 rounded-lg border border-white/[0.08] text-sm text-dim hover:text-white hover:bg-white/[0.04] transition-colors font-mono">
                 {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{displayAddress?.slice(0, 4)}...{displayAddress?.slice(-4)}</span>
+                <span className="hidden md:inline">{displayAddress?.slice(0, 4)}...{displayAddress?.slice(-4)}</span>
               </button>
               <button onClick={toggleStar} disabled={starLoading}
                 className={`p-1.5 rounded-lg border transition-colors ${starred ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' : 'border-white/[0.08] text-dim hover:text-white hover:bg-white/[0.04]'}`}>
@@ -381,18 +381,96 @@ export function TokenDetailPage() {
       </div>
 
       {/* ── Main Content ── */}
-      <div className="max-w-[1400px] mx-auto px-4 py-5">
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+      <div className="max-w-[1400px] mx-auto px-3 md:px-4 py-3 md:py-5">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 md:gap-5">
+          {/* Trading panel — show first on mobile for quick access */}
+          <div className="xl:hidden space-y-3">
+            {/* Trading Panel (mobile) */}
+            <div className="surface p-3">
+              {launchData?.isGraduated ? (
+                <div className="text-center py-4">
+                  <h3 className="text-base font-bold text-white mb-1">Token Graduated!</h3>
+                  <p className="text-xs text-dim mb-3">Trade on TraderJoe DEX for the best liquidity.</p>
+                  <div className="flex gap-2">
+                    <a
+                      href={`https://traderjoexyz.com/avalanche/trade?inputCurrency=AVAX&outputCurrency=${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs transition-colors"
+                    >
+                      TraderJoe <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <a
+                      href={`https://dexscreener.com/avalanche/${tokenAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-dim hover:text-white text-xs font-semibold transition-colors"
+                    >
+                      DexScreener <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex bg-cre8-base p-1 rounded-lg mb-2 border border-white/[0.04]">
+                    <button onClick={() => { setActiveTab('buy'); setAmount(''); }}
+                      className={`flex-1 py-2 rounded-md font-semibold text-sm transition-all ${activeTab === 'buy' ? 'bg-green-500 text-white' : 'text-dim hover:text-white'}`}>
+                      Buy
+                    </button>
+                    <button onClick={() => { setActiveTab('sell'); setAmount(''); }}
+                      className={`flex-1 py-2 rounded-md font-semibold text-sm transition-all ${activeTab === 'sell' ? 'bg-red-500 text-white' : 'text-dim hover:text-white'}`}>
+                      Sell
+                    </button>
+                  </div>
+                  <div className="relative mb-2">
+                    <Input type="number" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)}
+                      className="bg-cre8-base border-white/[0.06] text-white placeholder:text-dim/50 rounded-lg pr-16 h-10 text-base font-mono focus-visible:ring-1 focus-visible:ring-white/20" />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <span className="text-dim text-xs font-semibold">{activeTab === 'buy' ? 'AVAX' : displaySymbol}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 mb-2">
+                    {activeTab === 'buy' ? quickAmountsBuy.map((btn) => (
+                      <button key={btn.label} onClick={() => setAmount(btn.value === '0' ? '' : btn.value)}
+                        className="flex-1 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.04] text-[11px] text-dim hover:bg-white/[0.08] hover:text-white transition-colors font-mono">
+                        {btn.label}
+                      </button>
+                    )) : quickAmountsSell.map((pct) => (
+                      <button key={pct} onClick={() => { if (tokenBalanceFormatted > 0) setAmount((tokenBalanceFormatted * parseInt(pct) / 100).toString()); }}
+                        className="flex-1 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.04] text-[11px] text-dim hover:bg-white/[0.08] hover:text-white transition-colors font-mono">
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                  {isAuthenticated ? (
+                    <Button onClick={activeTab === 'buy' ? handleBuy : handleSell} disabled={buyLoading || sellLoading || !amount}
+                      className={`w-full font-semibold rounded-lg h-10 text-sm ${activeTab === 'buy' ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white'}`}>
+                      {(buyLoading || sellLoading) && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />}
+                      {activeTab === 'buy'
+                        ? (buyPending ? 'Confirming...' : buyLoading ? 'Submitting...' : `Buy ${displaySymbol}`)
+                        : (sellPending ? 'Confirming...' : sellLoading ? 'Selling...' : `Sell ${displaySymbol}`)}
+                    </Button>
+                  ) : (
+                    <Button onClick={signInWithX} disabled={isLoading}
+                      className="w-full bg-cre8-red hover:bg-cre8-red/90 text-white font-semibold rounded-lg h-10 text-sm">
+                      {isLoading ? 'Signing in...' : 'Log in to buy'}
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Left */}
           <div className="xl:col-span-8 space-y-4">
             {/* Market Cap + Stats Bar */}
-            <div className="flex flex-wrap items-end gap-6 px-1">
+            <div className="flex flex-col md:flex-row md:flex-wrap md:items-end gap-3 md:gap-6 px-1">
               <div>
                 <p className="text-xs text-dim mb-0.5">Market Cap</p>
-                <p className="text-2xl font-bold text-white font-mono tabular-nums">{formatMcapShort(marketCap)}</p>
+                <p className="text-xl md:text-2xl font-bold text-white font-mono tabular-nums">{formatMcapShort(marketCap)}</p>
               </div>
-              <div className="flex-1" />
-              <div className="flex items-center gap-4 text-xs">
+              <div className="hidden md:block flex-1" />
+              <div className="flex items-center gap-2 md:gap-4 text-xs overflow-x-auto no-scrollbar">
                 <div className="text-center px-3 py-1.5 bg-cre8-surface rounded-lg border border-white/[0.04]">
                   <p className="text-dim mb-0.5">Vol 24h</p>
                   <p className="text-white font-mono font-semibold tabular-nums">{vol24h > 0 ? `${vol24h.toFixed(2)}` : '-'}</p>
@@ -430,12 +508,12 @@ export function TokenDetailPage() {
             </div>
 
             {/* Chart */}
-            <div className="surface overflow-hidden flex flex-col min-h-[420px]">
-              <div className="px-4 py-3 flex items-center justify-between border-b border-white/[0.06]">
-                <div className="flex items-center gap-2">
+            <div className="surface overflow-hidden flex flex-col min-h-[280px] md:min-h-[420px]">
+              <div className="px-3 md:px-4 py-2 md:py-3 flex items-center justify-between border-b border-white/[0.06]">
+                <div className="flex items-center gap-1 md:gap-2">
                   {timeIntervals.map((interval) => (
                     <button key={interval} onClick={() => setChartInterval(interval)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${chartInterval === interval ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white'}`}>
+                      className={`px-2 md:px-2.5 py-1 rounded-md text-[11px] md:text-xs font-medium transition-colors ${chartInterval === interval ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white'}`}>
                       {interval}
                     </button>
                   ))}
@@ -532,7 +610,8 @@ export function TokenDetailPage() {
                     </div>
                   ) : (
                     <div>
-                      <div className="hidden sm:grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_0.7fr_0.5fr] gap-3 px-4 py-2 text-[11px] text-dim font-medium uppercase tracking-wider border-b border-white/[0.04]">
+                      {/* Desktop table header */}
+                      <div className="hidden md:grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_0.7fr_0.5fr] gap-3 px-4 py-2 text-[11px] text-dim font-medium uppercase tracking-wider border-b border-white/[0.04]">
                         <span>Account</span>
                         <span>Type</span>
                         <span className="text-right">Amount (AVAX)</span>
@@ -542,30 +621,55 @@ export function TokenDetailPage() {
                       </div>
                       <div className="max-h-[500px] overflow-y-auto divide-y divide-white/[0.03]">
                         {filteredTrades.map((trade, i) => (
-                          <div key={`${trade.txHash}-${i}`}
-                            className={`grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_0.7fr_0.5fr] gap-3 px-4 py-2.5 text-[13px] hover:bg-white/[0.02] transition-colors items-center ${trade.isNew ? 'animate-trade-flash' : ''}`}>
-                            <div className="flex items-center gap-2 min-w-0">
-                              {trade.traderAvatar ? (
-                                <img src={trade.traderAvatar} alt="" className="w-6 h-6 rounded-full shrink-0 object-cover" />
-                              ) : (
-                                <AddressAvatar address={trade.trader} size={24} />
-                              )}
-                              <span className="font-mono text-white text-xs truncate">{trade.trader.slice(0, 6)}...{trade.trader.slice(-4)}</span>
+                          <div key={`${trade.txHash}-${i}`} className={trade.isNew ? 'animate-trade-flash' : ''}>
+                            {/* Desktop row */}
+                            <div className="hidden md:grid grid-cols-[1.4fr_0.6fr_0.9fr_0.9fr_0.7fr_0.5fr] gap-3 px-4 py-2.5 text-[13px] hover:bg-white/[0.02] transition-colors items-center">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {trade.traderAvatar ? (
+                                  <img src={trade.traderAvatar} alt="" className="w-6 h-6 rounded-full shrink-0 object-cover" />
+                                ) : (
+                                  <AddressAvatar address={trade.trader} size={24} />
+                                )}
+                                <span className="font-mono text-white text-xs truncate">{trade.trader.slice(0, 6)}...{trade.trader.slice(-4)}</span>
+                              </div>
+                              <span className={`font-semibold ${trade.type === 'buy' ? 'text-green-400' : 'text-cre8-red'}`}>
+                                {trade.type === 'buy' ? 'Buy' : 'Sell'}
+                              </span>
+                              <span className="font-mono text-white text-right tabular-nums">
+                                {trade.avaxAmount < 0.01 ? trade.avaxAmount.toFixed(6) : trade.avaxAmount.toFixed(4)}
+                              </span>
+                              <span className="font-mono text-white text-right tabular-nums">
+                                {formatTokenQty(trade.tokenAmount)}
+                              </span>
+                              <span className="text-dim text-right text-xs">{formatTimeAgo(trade.timestamp)}</span>
+                              <a href={`${explorer}/tx/${trade.txHash}`} target="_blank" rel="noopener noreferrer"
+                                className="text-right font-mono text-xs text-dim hover:text-white transition-colors truncate">
+                                {trade.txHash.slice(0, 6)}
+                              </a>
                             </div>
-                            <span className={`font-semibold ${trade.type === 'buy' ? 'text-green-400' : 'text-cre8-red'}`}>
-                              {trade.type === 'buy' ? 'Buy' : 'Sell'}
-                            </span>
-                            <span className="font-mono text-white text-right tabular-nums">
-                              {trade.avaxAmount < 0.01 ? trade.avaxAmount.toFixed(6) : trade.avaxAmount.toFixed(4)}
-                            </span>
-                            <span className="font-mono text-white text-right tabular-nums">
-                              {formatTokenQty(trade.tokenAmount)}
-                            </span>
-                            <span className="text-dim text-right text-xs">{formatTimeAgo(trade.timestamp)}</span>
-                            <a href={`${explorer}/tx/${trade.txHash}`} target="_blank" rel="noopener noreferrer"
-                              className="text-right font-mono text-xs text-dim hover:text-white transition-colors truncate">
-                              {trade.txHash.slice(0, 6)}
-                            </a>
+                            {/* Mobile compact row */}
+                            <div className="md:hidden flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.02] transition-colors">
+                              {trade.traderAvatar ? (
+                                <img src={trade.traderAvatar} alt="" className="w-5 h-5 rounded-full shrink-0 object-cover" />
+                              ) : (
+                                <AddressAvatar address={trade.trader} size={20} />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[11px] font-semibold ${trade.type === 'buy' ? 'text-green-400' : 'text-cre8-red'}`}>
+                                    {trade.type === 'buy' ? 'Buy' : 'Sell'}
+                                  </span>
+                                  <span className="font-mono text-white text-xs">
+                                    {trade.avaxAmount < 0.01 ? trade.avaxAmount.toFixed(4) : trade.avaxAmount.toFixed(2)} AVAX
+                                  </span>
+                                </div>
+                                <span className="font-mono text-dim text-[10px]">{trade.trader.slice(0, 6)}...{trade.trader.slice(-4)}</span>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <a href={`${explorer}/tx/${trade.txHash}`} target="_blank" rel="noopener noreferrer"
+                                  className="text-dim text-[10px] hover:text-white transition-colors">{formatTimeAgo(trade.timestamp)}</a>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -578,8 +682,8 @@ export function TokenDetailPage() {
 
           {/* ── Right Sidebar ── */}
           <div className="xl:col-span-4 space-y-4">
-            {/* Trading Panel */}
-            <div className="surface p-4">
+            {/* Trading Panel — hidden on mobile (shown above chart instead) */}
+            <div className="hidden xl:block surface p-4">
               {launchData?.isGraduated ? (
                 <div className="text-center py-6">
                   <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">

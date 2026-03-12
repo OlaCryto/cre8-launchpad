@@ -88,7 +88,7 @@ export function Sidebar() {
   return (
     <>
       {/* Sidebar */}
-      <aside className="fixed top-0 left-0 h-screen w-[68px] bg-cre8-base border-r border-white/[0.06] flex flex-col items-center py-5 z-50">
+      <aside className="hidden md:flex fixed top-0 left-0 h-screen w-[68px] bg-cre8-base border-r border-white/[0.06] flex-col items-center py-5 z-50">
         {/* Logo */}
         <Link to="/" className="mb-8 group">
           <img

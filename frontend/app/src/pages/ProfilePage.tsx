@@ -197,8 +197,8 @@ export function ProfilePage() {
   const totalValue = holdings.reduce((sum, h) => sum + (h.balance * h.currentPrice), 0);
 
   return (
-    <div className="min-h-screen">
-      <div className="max-w-[680px] mx-auto px-4 py-5">
+    <div className="min-h-screen pb-20 md:pb-0">
+      <div className="max-w-[680px] mx-auto px-3 md:px-4 py-4 md:py-5">
 
         {/* ── Header row ── */}
         <div className="flex items-center gap-3 mb-4">
@@ -250,23 +250,23 @@ export function ProfilePage() {
 
         {/* ── Own-profile actions ── */}
         {isOwnProfile && (
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-4 flex-wrap">
             <button onClick={() => { setShowDeposit(!showDeposit); if (!showDeposit) setShowSend(false); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cre8-red/10 border border-cre8-red/20 text-cre8-red text-xs font-semibold hover:bg-cre8-red/20 transition-colors">
+              className="flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg bg-cre8-red/10 border border-cre8-red/20 text-cre8-red text-[11px] md:text-xs font-semibold hover:bg-cre8-red/20 transition-colors">
               <Wallet className="w-3.5 h-3.5" />Deposit
               <ChevronDown className={`w-3 h-3 transition-transform ${showDeposit ? 'rotate-180' : ''}`} />
             </button>
             <button onClick={() => { setShowSend(!showSend); if (!showSend) setShowDeposit(false); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
+              className="flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-[11px] md:text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
               <Send className="w-3.5 h-3.5" />Send
               <ChevronDown className={`w-3 h-3 transition-transform ${showSend ? 'rotate-180' : ''}`} />
             </button>
             <Link to="/create"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
-              <Plus className="w-3.5 h-3.5" />Create coin
+              className="flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-[11px] md:text-xs font-semibold hover:text-white hover:bg-white/[0.06] transition-colors">
+              <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Create coin</span><span className="sm:hidden">Create</span>
             </Link>
             <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/profile/${profileAddress}`); toast.success('Profile link copied!'); }}
-              className="ml-auto px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-xs hover:text-white transition-colors">
+              className="ml-auto px-2.5 md:px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-dim text-[11px] md:text-xs hover:text-white transition-colors">
               Share
             </button>
           </div>

@@ -3,11 +3,12 @@
  * Single-contract architecture: all reads go to one address.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { type Address, formatEther, parseEther } from 'viem';
 import { publicClient } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
 import { Cre8ManagerABI, BuyEvent, SellEvent, ERC20ABI, TransferEvent } from '@/config/abis';
+import { useTradeWebSocket, type WsTrade } from '@/hooks/useTradeWebSocket';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
 const managerAddress = contracts.Cre8Manager as Address;
@@ -538,7 +539,7 @@ async function enrichTradesWithUsers(
   });
 }
 
-/** Get trade activity (Buy/Sell events from Cre8Manager) with live polling */
+/** Get trade activity (Buy/Sell events from Cre8Manager) with WebSocket + polling fallback */
 export function useTradeActivity(tokenAddress: string | undefined) {
   const [trades, setTrades] = useState<TradeActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -547,6 +548,34 @@ export function useTradeActivity(tokenAddress: string | undefined) {
   const timestampsRef = useRef<Map<bigint, number>>(new Map());
   const knownTxHashes = useRef<Set<string>>(new Set());
   const userCacheRef = useRef<Record<string, { handle: string; name: string; avatar: string }>>({});
+
+  // WebSocket real-time trades
+  const handleWsTrade = useCallback(async (wsTrade: WsTrade) => {
+    // Only process trades for this token
+    if (tokenIdRef.current === 0n || wsTrade.tokenId !== String(tokenIdRef.current)) return;
+    if (knownTxHashes.current.has(wsTrade.txHash)) return;
+
+    knownTxHashes.current.add(wsTrade.txHash);
+
+    const trade: TradeActivity = {
+      type: wsTrade.type,
+      trader: wsTrade.trader,
+      avaxAmount: wsTrade.avaxAmount,
+      tokenAmount: wsTrade.tokenAmount,
+      newPrice: wsTrade.newPrice,
+      timestamp: wsTrade.timestamp,
+      txHash: wsTrade.txHash,
+      isNew: true,
+    };
+
+    const [enriched] = await enrichTradesWithUsers([trade], userCacheRef.current);
+    setTrades((prev) => {
+      const existing = prev.map((t) => ({ ...t, isNew: false }));
+      return [enriched, ...existing];
+    });
+  }, []);
+
+  const { connected: wsConnected } = useTradeWebSocket(handleWsTrade);
 
   // Initial load
   useEffect(() => {
@@ -644,7 +673,7 @@ export function useTradeActivity(tokenAddress: string | undefined) {
     return () => { cancelled = true; };
   }, [tokenAddress]);
 
-  // Poll for new trades every 10 seconds
+  // Poll as fallback — slower when WebSocket is connected
   useEffect(() => {
     if (!tokenAddress) return;
     let cancelled = false;
@@ -702,12 +731,12 @@ export function useTradeActivity(tokenAddress: string | undefined) {
       } catch (err) {
         console.error('[useTradeActivity] poll failed:', err);
       }
-    }, 10_000);
+    }, wsConnected ? 30_000 : 10_000);
 
     return () => { cancelled = true; clearInterval(interval); };
-  }, [tokenAddress]);
+  }, [tokenAddress, wsConnected]);
 
-  return { trades, isLoading };
+  return { trades, isLoading, wsConnected };
 }
 
 /** Get token holders by reading Transfer events and checking current balances */
@@ -861,6 +890,39 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
   const timestampsRef = useRef<Map<bigint, number>>(new Map());
 
   useEffect(() => { tokensRef.current = tokens; }, [tokens]);
+
+  const resolveSymbolFromId = useCallback((tokenId: string): { symbol: string; address: string } => {
+    const t = tokensRef.current.find((tk) => String(tk.tokenId) === tokenId);
+    return t ? { symbol: t.symbol, address: t.address } : { symbol: `#${tokenId}`, address: '' };
+  }, []);
+
+  // WebSocket real-time trades for global feed
+  const handleWsGlobalTrade = useCallback(async (wsTrade: WsTrade) => {
+    if (knownTxRef.current.has(wsTrade.txHash)) return;
+    knownTxRef.current.add(wsTrade.txHash);
+
+    const { symbol, address: tokenAddr } = resolveSymbolFromId(wsTrade.tokenId);
+
+    const trade: GlobalTrade = {
+      type: wsTrade.type,
+      trader: wsTrade.trader,
+      avaxAmount: wsTrade.avaxAmount,
+      tokenAmount: wsTrade.tokenAmount,
+      newPrice: wsTrade.newPrice,
+      timestamp: wsTrade.timestamp,
+      txHash: wsTrade.txHash,
+      isNew: true,
+      tokenAddress: tokenAddr,
+      tokenSymbol: symbol,
+    };
+
+    setTrades((prev) => {
+      const existing = prev.map((t) => ({ ...t, isNew: false }));
+      return [trade, ...existing].slice(0, 50);
+    });
+  }, [resolveSymbolFromId]);
+
+  const { connected: wsGlobalConnected } = useTradeWebSocket(handleWsGlobalTrade);
 
   const resolveSymbol = (tokenId: bigint): { symbol: string; address: string } => {
     const t = tokensRef.current.find((tk) => tk.tokenId === tokenId);
@@ -1061,10 +1123,10 @@ export function useGlobalTradeActivity(tokens: OnChainToken[]) {
       } catch (err) {
         console.error('[useGlobalTradeActivity] poll failed:', err);
       }
-    }, 10_000);
+    }, wsGlobalConnected ? 30_000 : 10_000);
 
     return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  }, [wsGlobalConnected]);
 
   return { trades, isLoading };
 }
