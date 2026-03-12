@@ -15,6 +15,7 @@ import { saveTokenImage, getTokenImage } from '../database.js';
 const router = Router();
 
 const MAX_BASE64_LENGTH = 7 * 1024 * 1024; // ~5MB decoded
+const ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
 
 const uploadLimiter = rateLimit({
   windowMs: 60_000,
@@ -75,7 +76,8 @@ router.get('/:tokenAddress', async (req, res) => {
       return;
     }
 
-    res.setHeader('Content-Type', row.mime_type);
+    const safeMime = ALLOWED_MIMES.includes(row.mime_type) ? row.mime_type : 'application/octet-stream';
+    res.setHeader('Content-Type', safeMime);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(row.image_data);
   } catch (err) {

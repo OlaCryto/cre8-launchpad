@@ -9,21 +9,32 @@ import { ACTIVE_NETWORK } from './wagmi';
 const chain = ACTIVE_NETWORK === 'fuji' ? avalancheFuji : avalanche;
 
 const fujiRpcs = [
-  'https://hardworking-dawn-sailboat.avalanche-testnet.quiknode.pro/022a54c6e74f3463167816f37d1f2ad5ae91af21/ext/bc/C/rpc/',
+  // Premium RPC via env var — never hardcode API keys in source
+  ...(import.meta.env.VITE_FUJI_RPC_URL ? [import.meta.env.VITE_FUJI_RPC_URL] : []),
   'https://api.avax-test.network/ext/bc/C/rpc',
 ];
 
 const mainnetRpcs = [
-  'https://hardworking-dawn-sailboat.avalanche-mainnet.quiknode.pro/022a54c6e74f3463167816f37d1f2ad5ae91af21/ext/bc/C/rpc/',
+  ...(import.meta.env.VITE_MAINNET_RPC_URL ? [import.meta.env.VITE_MAINNET_RPC_URL] : []),
   'https://api.avax.network/ext/bc/C/rpc',
 ];
 
 const rpcs = ACTIVE_NETWORK === 'fuji' ? fujiRpcs : mainnetRpcs;
-const transport = fallback(rpcs.map(url => http(url)));
+const transport = fallback(rpcs.map(url => http(url, {
+  batch: true,
+  retryCount: 2,
+  retryDelay: 1000,
+})));
 
 export const publicClient = createPublicClient({
   chain,
   transport,
+  batch: {
+    multicall: {
+      wait: 50,       // batch calls within 50ms window
+      batchSize: 512,  // max 512 calls per batch
+    },
+  },
 });
 
 /** Create a wallet client from a private key for signing transactions */

@@ -80,18 +80,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  // Load user from localStorage on mount + validate session
+  // Load user from localStorage on mount + validate session & re-fetch key
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     const session = localStorage.getItem('cre8_session');
 
     if (stored && session) {
       try {
-        const user = JSON.parse(stored) as PlatformUser;
-        setState({ user, isAuthenticated: true, isLoading: false });
+        const parsed = JSON.parse(stored) as PlatformUser;
+        // Show user immediately (without private key) while we re-fetch
+        const userWithoutKey: PlatformUser = {
+          ...parsed,
+          wallet: { ...parsed.wallet, privateKey: '' },
+        };
+        setState({ user: userWithoutKey, isAuthenticated: true, isLoading: false });
 
-        // Validate session in background
-        apiCall('/api/auth/session').catch(() => {
+        // Validate session + re-fetch private key from server (never stored locally)
+        Promise.all([
+          apiCall('/api/auth/session'),
+          apiCall('/api/auth/wallet-key', { method: 'POST' }),
+        ]).then(([, keyData]) => {
+          setState(s => s.user ? {
+            ...s,
+            user: { ...s.user, wallet: { ...s.user.wallet, privateKey: keyData.privateKey } },
+          } : s);
+        }).catch(() => {
           // Session expired — force re-login
           localStorage.removeItem(STORAGE_KEY);
           localStorage.removeItem('cre8_session');
@@ -106,9 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Persist user to localStorage
+  // Persist user to localStorage — NEVER store private key
   const persistUser = (user: PlatformUser) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    const safe = { ...user, wallet: { address: user.wallet.address, privateKey: '' } };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
   };
 
   /** Redirect to Google OAuth */

@@ -25,12 +25,14 @@ router.post('/snapshot', requireApiKey, async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid token_address' });
     return;
   }
-  if (typeof price !== 'number' || price < 0) {
+  if (typeof price !== 'number' || !Number.isFinite(price) || price < 0) {
     res.status(400).json({ error: 'Invalid price' });
     return;
   }
+  const safeReserve = typeof reserve === 'number' && Number.isFinite(reserve) && reserve >= 0 ? reserve : 0;
+  const safeMarketCap = typeof market_cap === 'number' && Number.isFinite(market_cap) && market_cap >= 0 ? market_cap : 0;
 
-  await addPriceSnapshot(token_address.toLowerCase(), price, reserve || 0, market_cap || 0);
+  await addPriceSnapshot(token_address.toLowerCase(), price, safeReserve, safeMarketCap);
   res.status(201).json({ ok: true });
 });
 

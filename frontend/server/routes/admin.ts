@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import {
   getAllApplications, getApplicationById, reviewApplication,
   getPendingApplications, getApplicationCountByStatus,
@@ -7,11 +8,16 @@ import { param } from '../middleware/validation.js';
 
 const router = Router();
 
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 function requireAdmin(req: Request, res: Response, next: () => void) {
   const apiKey = req.headers['x-admin-key'] as string;
   const expected = process.env.ADMIN_API_KEY;
 
-  if (expected && apiKey === expected) {
+  if (expected && apiKey && safeCompare(apiKey, expected)) {
     next();
     return;
   }

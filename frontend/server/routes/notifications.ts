@@ -21,8 +21,17 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
 // ============ POST /api/notifications/read ============
 router.post('/read', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { ids } = req.body as { ids?: number[] };
-    await markNotificationsRead(req.sessionUser!.wallet_address, ids);
+    const { ids } = req.body as { ids?: unknown };
+    // Validate ids is an array of positive integers (max 100)
+    let validIds: number[] | undefined;
+    if (ids !== undefined) {
+      if (!Array.isArray(ids) || ids.length > 100 || !ids.every((id: unknown) => typeof id === 'number' && Number.isInteger(id) && id > 0)) {
+        res.status(400).json({ error: 'ids must be an array of positive integers (max 100)' });
+        return;
+      }
+      validIds = ids as number[];
+    }
+    await markNotificationsRead(req.sessionUser!.wallet_address, validIds);
     res.json({ ok: true });
   } catch (err: any) {
     console.error('Failed to mark notifications read:', err);

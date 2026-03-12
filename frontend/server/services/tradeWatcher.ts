@@ -3,7 +3,7 @@ import { avalancheFuji } from 'viem/chains';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Server } from 'http';
 
-const RPC_URL = process.env.FUJI_RPC_URL || 'https://hardworking-dawn-sailboat.avalanche-testnet.quiknode.pro/022a54c6e74f3463167816f37d1f2ad5ae91af21/ext/bc/C/rpc/';
+const RPC_URL = process.env.FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
 const MANAGER_ADDRESS = (process.env.CRE8_MANAGER_ADDRESS || '0x4e972F92461AE6bc080411723C856996Dbe1591E') as Address;
 
 const BuyEvent = {
@@ -129,10 +129,18 @@ async function pollForTrades() {
   }
 }
 
+const MAX_WS_CLIENTS = 200;
+
 export function startTradeWatcher(server: Server) {
   wss = new WebSocketServer({ server, path: '/ws/trades' });
 
   wss.on('connection', (ws) => {
+    // Reject new connections if at capacity (DoS protection)
+    if (clients.size >= MAX_WS_CLIENTS) {
+      ws.close(1013, 'Server at capacity');
+      return;
+    }
+
     clients.add(ws);
     console.log(`[TradeWatcher] Client connected (${clients.size} total)`);
 
@@ -144,6 +152,9 @@ export function startTradeWatcher(server: Server) {
     ws.on('error', () => {
       clients.delete(ws);
     });
+
+    // Ignore any incoming messages (read-only broadcast channel)
+    ws.on('message', () => {});
 
     // Send a welcome message so the client knows the connection works
     ws.send(JSON.stringify({ type: 'connected', manager: MANAGER_ADDRESS }));

@@ -15,12 +15,13 @@ export function isValidAddress(addr: string | string[] | undefined): addr is str
 }
 
 /**
- * Strips HTML tags and dangerous characters from a string.
+ * Strips HTML tags and encodes dangerous characters to prevent XSS.
  */
 export function sanitizeText(input: string): string {
   return input
-    .replace(/<[^>]*>/g, '')
-    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/&(?!lt;|gt;|amp;|quot;|#x27;)/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;')
     .trim();

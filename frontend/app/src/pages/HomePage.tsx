@@ -473,108 +473,106 @@ export function HomePage() {
               })}
             </div>
           ) : (
-            /* ── List View (Pump.fun style) ── */
-            <div className="surface overflow-hidden overflow-x-auto">
-              <table className="w-full min-w-[900px]">
-                <thead>
-                  <tr className="text-[11px] text-dim font-medium uppercase tracking-wider border-b border-white/[0.04]">
-                    <th className="text-left px-3 py-2.5 w-8">#</th>
-                    <th className="text-left px-3 py-2.5">Coin</th>
-                    <th className="text-center px-2 py-2.5 w-[70px]">Graph</th>
-                    <th className="text-right px-3 py-2.5">MCap</th>
-                    <th className="text-right px-3 py-2.5 w-[60px]">Age</th>
-                    <th className="text-right px-3 py-2.5">Txns</th>
-                    <th className="text-right px-3 py-2.5">24h Vol</th>
-                    <th className="text-right px-3 py-2.5">Traders</th>
-                    <th className="text-right px-3 py-2.5">Reserve</th>
-                    <th className="text-right px-3 py-2.5 w-[70px]">Progress</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.03]">
-                  {isLoading ? Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-3 py-3"><div className="skeleton h-4 w-4" /></td>
-                      <td className="px-3 py-3"><div className="flex items-center gap-3"><div className="skeleton w-8 h-8 rounded-lg" /><div className="space-y-1"><div className="skeleton h-3.5 w-28" /><div className="skeleton h-3 w-16" /></div></div></td>
-                      <td className="px-2 py-3"><div className="skeleton h-5 w-14" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-14 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-8 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-10 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-12 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-8 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-3.5 w-12 ml-auto" /></td>
-                      <td className="px-3 py-3"><div className="skeleton h-2 w-12 ml-auto" /></td>
+            /* ── List View — sticky coin column, scrollable data ── */
+            <div className="surface overflow-hidden relative">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[800px]">
+                  <thead>
+                    <tr className="text-[11px] text-dim font-medium uppercase tracking-wider border-b border-white/[0.04]">
+                      <th className="sticky left-0 z-10 bg-cre8-surface text-left pl-3 pr-2 py-2.5 min-w-[160px] md:min-w-[220px]">
+                        <span className="flex items-center gap-1">Coin <IconArrowsSort size={12} className="text-dim/40" /></span>
+                      </th>
+                      <th className="text-center px-2 py-2.5 w-[70px]">Graph</th>
+                      <th className="text-right px-3 py-2.5">MCap <IconArrowsSort size={12} className="inline text-dim/40" /></th>
+                      <th className="text-right px-3 py-2.5 w-[60px]">Age <IconArrowsSort size={12} className="inline text-dim/40" /></th>
+                      <th className="text-right px-3 py-2.5">Txns <IconArrowsSort size={12} className="inline text-dim/40" /></th>
+                      <th className="text-right px-3 py-2.5">24h Vol</th>
+                      <th className="text-right px-3 py-2.5">Traders</th>
+                      <th className="text-right px-3 py-2.5">Reserve</th>
+                      <th className="text-right px-3 py-2.5 w-[70px]">Progress</th>
                     </tr>
-                  )) : sortedTokens.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="py-16 text-center">
-                        <IconRocket size={32} className="text-dim/30 mx-auto mb-3" />
-                        <p className="text-dim text-sm">{tokens.length === 0 ? 'No tokens launched yet' : 'No tokens match your filters'}</p>
-                      </td>
-                    </tr>
-                  ) : sortedTokens.map((token, idx) => {
-                    const stats = tokenStats[token.address];
-                    return (
-                      <tr key={token.address} className="hover:bg-white/[0.02] transition-colors group">
-                        <td className="px-3 py-2.5">
-                          <span className="text-dim text-xs font-mono">#{idx + 1}</span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <Link to={`/token/${token.address}`} className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cre8-red/15 to-violet-500/15 flex items-center justify-center shrink-0 overflow-hidden">
-                              <TokenImage tokenAddress={token.address} symbol={token.symbol} onChainImageURI={token.imageURI}
-                                className="w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-xs font-bold text-white" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-white text-sm truncate group-hover:text-cre8-red transition-colors">{token.name}</span>
-                                {token.isGraduated && <span className="text-[9px] px-1 py-0.5 bg-emerald-500/15 text-emerald-400 rounded font-medium">G</span>}
-                                {token.isForgeToken ? (
-                                  <span className="text-[9px] px-1 py-0.5 bg-amber-500/15 text-amber-400 rounded font-medium">Creator</span>
-                                ) : (
-                                  <span className="text-[9px] px-1 py-0.5 bg-white/[0.06] text-dim/60 rounded font-medium">Trenches</span>
-                                )}
-                              </div>
-                              <span className="text-[11px] text-dim font-mono">{token.symbol}</span>
-                            </div>
-                          </Link>
-                        </td>
-                        <td className="px-2 py-2.5 text-center">
-                          <Link to={`/token/${token.address}`}>
-                            <Sparkline data={stats?.sparkline || []} />
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="font-mono text-[13px] text-white tabular-nums">{formatMcap(token.reserveBalance)}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="text-[13px] text-dim tabular-nums">{ageLabel(token.createdAt)}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="font-mono text-[13px] text-white tabular-nums">{stats?.txns ? stats.txns.toLocaleString() : '-'}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="font-mono text-[13px] text-white tabular-nums">{formatVol(stats?.vol24h || 0)}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="font-mono text-[13px] text-white tabular-nums">{stats?.traders || '-'}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <span className="font-mono text-[13px] text-white tabular-nums">{token.reserveBalance.toFixed(2)}</span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-1.5 justify-end">
-                            <div className="w-10 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full ${token.graduationProgress >= 100 ? 'bg-emerald-400' : 'bg-cre8-red'}`}
-                                style={{ width: `${Math.min(token.graduationProgress, 100)}%` }} />
-                            </div>
-                            <span className="text-[10px] text-dim font-mono tabular-nums w-6 text-right">{token.graduationProgress.toFixed(0)}%</span>
-                          </div>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.03]">
+                    {isLoading ? Array.from({ length: 8 }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="sticky left-0 z-10 bg-cre8-surface pl-3 pr-2 py-3"><div className="flex items-center gap-2"><div className="skeleton w-8 h-8 rounded-lg" /><div className="space-y-1"><div className="skeleton h-3.5 w-20" /><div className="skeleton h-3 w-12" /></div></div></td>
+                        <td className="px-2 py-3"><div className="skeleton h-5 w-14" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-14 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-8 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-10 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-12 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-8 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-3.5 w-12 ml-auto" /></td>
+                        <td className="px-3 py-3"><div className="skeleton h-2 w-12 ml-auto" /></td>
+                      </tr>
+                    )) : sortedTokens.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-16 text-center">
+                          <IconRocket size={32} className="text-dim/30 mx-auto mb-3" />
+                          <p className="text-dim text-sm">{tokens.length === 0 ? 'No tokens launched yet' : 'No tokens match your filters'}</p>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ) : sortedTokens.map((token, idx) => {
+                      const stats = tokenStats[token.address];
+                      return (
+                        <tr key={token.address} className="hover:bg-white/[0.02] transition-colors group">
+                          {/* Sticky coin column */}
+                          <td className="sticky left-0 z-10 bg-cre8-surface group-hover:bg-[#0d0d14] transition-colors pl-3 pr-2 py-2.5">
+                            <Link to={`/token/${token.address}`} className="flex items-center gap-2">
+                              <span className="text-dim text-[10px] font-mono w-5 shrink-0">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cre8-red/15 to-violet-500/15 flex items-center justify-center shrink-0 overflow-hidden">
+                                <TokenImage tokenAddress={token.address} symbol={token.symbol} onChainImageURI={token.imageURI}
+                                  className="w-full h-full flex items-center justify-center" imgClassName="w-full h-full object-cover" fallbackClassName="text-xs font-bold text-white" />
+                              </div>
+                              <div className="min-w-0 list-coin-info">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold text-white text-sm truncate max-w-[80px] md:max-w-[140px] group-hover:text-cre8-red transition-colors">{token.name}</span>
+                                  {token.isGraduated && <span className="text-[9px] px-1 py-0.5 bg-emerald-500/15 text-emerald-400 rounded font-medium shrink-0">G</span>}
+                                </div>
+                                <span className="text-[11px] text-dim font-mono">{token.symbol}</span>
+                              </div>
+                            </Link>
+                          </td>
+                          <td className="px-2 py-2.5 text-center">
+                            <Link to={`/token/${token.address}`}>
+                              <Sparkline data={stats?.sparkline || []} />
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-mono text-[13px] text-white tabular-nums">{formatMcap(token.reserveBalance)}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="text-[13px] text-dim tabular-nums">{ageLabel(token.createdAt)}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-mono text-[13px] text-white tabular-nums">{stats?.txns ? stats.txns.toLocaleString() : '-'}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-mono text-[13px] text-white tabular-nums">{formatVol(stats?.vol24h || 0)}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-mono text-[13px] text-white tabular-nums">{stats?.traders || '-'}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-mono text-[13px] text-white tabular-nums">{token.reserveBalance.toFixed(2)}</span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <div className="w-10 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${token.graduationProgress >= 100 ? 'bg-emerald-400' : 'bg-cre8-red'}`}
+                                  style={{ width: `${Math.min(token.graduationProgress, 100)}%` }} />
+                              </div>
+                              <span className="text-[10px] text-dim font-mono tabular-nums w-6 text-right">{token.graduationProgress.toFixed(0)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Fade edge hint for scrollable content */}
+              <div className="md:hidden absolute top-0 right-0 bottom-0 w-6 pointer-events-none bg-gradient-to-l from-cre8-surface to-transparent" />
             </div>
           )}
 
@@ -620,13 +618,13 @@ export function HomePage() {
           )}
         </div>
 
-        {/* View Mode — list hidden on mobile (table doesn't fit) */}
+        {/* View Mode */}
         <button onClick={() => setViewMode('grid')}
           className={`p-2 rounded-xl transition-colors ${viewMode === 'grid' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="Grid view">
           <IconLayoutGrid size={18} />
         </button>
         <button onClick={() => setViewMode('list')}
-          className={`hidden md:block p-2 rounded-xl transition-colors ${viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="List view">
+          className={`p-2 rounded-xl transition-colors ${viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-dim hover:text-white hover:bg-white/[0.04]'}`} title="List view">
           <IconLayoutList size={18} />
         </button>
 

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { findValidSession } from '../database.js';
 
 export interface AuthenticatedRequest extends Request {
@@ -79,7 +80,7 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  if (!key || key !== expected) {
+  if (!key || key.length !== expected.length || !timingSafeEqual(Buffer.from(key), Buffer.from(expected))) {
     res.status(403).json({ error: 'Invalid API key' });
     return;
   }

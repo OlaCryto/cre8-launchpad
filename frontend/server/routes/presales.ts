@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
-import { param } from '../middleware/validation.js';
+import { param, isValidAddress } from '../middleware/validation.js';
 import {
   createPresaleEvent, getPresaleEvents, getPresaleByLaunchId,
   getFollowerAddresses, createBulkNotifications,
@@ -18,15 +18,40 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       return;
     }
 
+    const parsedLaunchId = Number(launch_id);
+    const parsedHardCap = Number(hard_cap);
+    const parsedSoftCap = Number(soft_cap || 0);
+    const parsedMaxPerWallet = Number(max_per_wallet);
+    const parsedDuration = Number(duration_seconds);
+
+    if (!Number.isFinite(parsedLaunchId) || parsedLaunchId < 0 ||
+        !Number.isFinite(parsedHardCap) || parsedHardCap <= 0 ||
+        !Number.isFinite(parsedSoftCap) || parsedSoftCap < 0 ||
+        !Number.isFinite(parsedMaxPerWallet) || parsedMaxPerWallet <= 0 ||
+        !Number.isInteger(parsedDuration) || parsedDuration <= 0) {
+      res.status(400).json({ error: 'Invalid numeric field values' });
+      return;
+    }
+    if (typeof token_name !== 'string' || token_name.length > 100 ||
+        typeof token_symbol !== 'string' || token_symbol.length > 20) {
+      res.status(400).json({ error: 'Invalid token name or symbol' });
+      return;
+    }
+
+    if (vault_address && !isValidAddress(vault_address)) {
+      res.status(400).json({ error: 'Invalid vault address' });
+      return;
+    }
+
     const result = await createPresaleEvent({
-      launch_id,
+      launch_id: parsedLaunchId,
       creator_address: req.sessionUser!.wallet_address,
       token_name,
       token_symbol,
-      hard_cap: parseFloat(hard_cap),
-      soft_cap: parseFloat(soft_cap || '0'),
-      max_per_wallet: parseFloat(max_per_wallet),
-      duration_seconds: parseInt(duration_seconds),
+      hard_cap: parsedHardCap,
+      soft_cap: parsedSoftCap,
+      max_per_wallet: parsedMaxPerWallet,
+      duration_seconds: parsedDuration,
       vault_address,
     });
 

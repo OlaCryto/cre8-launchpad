@@ -124,6 +124,19 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Sticky column shadow for scrollable tables */
+  td.sticky::after,
+  th.sticky::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -8px;
+    bottom: 0;
+    width: 8px;
+    pointer-events: none;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.15), transparent);
+  }
 }
 
 @layer components {
