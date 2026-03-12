@@ -30,6 +30,8 @@ export function Sidebar() {
   const [pkModal, setPkModal] = useState<'closed' | 'warning' | 'revealed'>('closed');
   const [pkCopied, setPkCopied] = useState(false);
   const [pkVisible, setPkVisible] = useState(false);
+  const [exportedKey, setExportedKey] = useState<string>('');
+  const [pkExporting, setPkExporting] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Poll for unread notification count
@@ -282,7 +284,7 @@ export function Sidebar() {
       {/* Private Key Modal */}
       {pkModal !== 'closed' && user && createPortal(
         <div className="fixed inset-0 z-[9999]">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPkModal('closed')} />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setPkModal('closed'); setExportedKey(''); }} />
           <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
             <div
               className="bg-cre8-surface border border-white/[0.06] rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto animate-slide-up"
@@ -312,16 +314,30 @@ export function Sidebar() {
                   </div>
                   <div className="px-6 pb-6 flex gap-3">
                     <button
-                      onClick={() => setPkModal('closed')}
+                      onClick={() => { setPkModal('closed'); setExportedKey(''); }}
                       className="flex-1 px-4 py-2.5 rounded-lg bg-white/[0.04] text-dim hover:bg-white/[0.08] hover:text-white text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => { setPkModal('revealed'); setPkVisible(false); setPkCopied(false); }}
+                      onClick={async () => {
+                        setPkExporting(true);
+                        try {
+                          const { exportPrivateKey } = await import('@/lib/serverSign');
+                          const key = await exportPrivateKey();
+                          setExportedKey(key);
+                          setPkModal('revealed');
+                          setPkVisible(false);
+                          setPkCopied(false);
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to export key');
+                        } finally {
+                          setPkExporting(false);
+                        }
+                      }}
                       className="flex-1 px-4 py-2.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-sm font-medium transition-colors border border-red-500/20"
                     >
-                      Show Key
+                      {pkExporting ? 'Loading...' : 'Show Key'}
                     </button>
                   </div>
                 </>
@@ -330,7 +346,7 @@ export function Sidebar() {
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold text-white">Your Private Key</h3>
                     <button
-                      onClick={() => setPkModal('closed')}
+                      onClick={() => { setPkModal('closed'); setExportedKey(''); }}
                       className="w-7 h-7 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] flex items-center justify-center text-dim hover:text-white transition-colors"
                     >
                       <IconX size={14} />
@@ -339,7 +355,7 @@ export function Sidebar() {
                   <div className="relative">
                     <div className="bg-cre8-base border border-white/[0.06] rounded-lg p-3.5 pr-20 font-mono text-sm break-all">
                       {pkVisible ? (
-                        <span className="text-white">{user.wallet.privateKey}</span>
+                        <span className="text-white">{exportedKey}</span>
                       ) : (
                         <span className="text-dim">{'•'.repeat(66)}</span>
                       )}
@@ -353,7 +369,7 @@ export function Sidebar() {
                       </button>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(user.wallet.privateKey);
+                          navigator.clipboard.writeText(exportedKey);
                           setPkCopied(true);
                           setTimeout(() => setPkCopied(false), 2000);
                         }}

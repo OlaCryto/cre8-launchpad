@@ -1,17 +1,18 @@
 /**
  * Forge mode hooks — create tokens with whitelist + manage whitelist/blacklist.
- * All operations go through Cre8Manager (single contract).
+ * All write operations go through server-side signing (private key never in browser).
  *
  * Forge Mode = whitelist phase (1-60 min) with fixed AVAX limits per wallet/tx,
  * then automatic transition to public trading.
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { type Address, formatEther, parseEther, decodeEventLog } from 'viem';
-import { publicClient, createWalletClientFromKey } from '@/config/client';
+import { type Address, formatEther, decodeEventLog } from 'viem';
+import { publicClient } from '@/config/client';
 import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
 import { Cre8ManagerABI, TokenCreatedForgeEvent } from '@/config/abis';
 import { useAuth } from '@/contexts/AuthContext';
+import { serverSignTransaction } from '@/lib/serverSign';
 
 const contracts = CONTRACTS[ACTIVE_NETWORK];
 const managerAddress = contracts.Cre8Manager as Address;
@@ -31,16 +32,6 @@ export interface WhitelistAllowance {
 }
 
 // ============ Helpers ============
-
-function useWalletClient() {
-  const { user } = useAuth();
-  if (!user?.wallet.privateKey) return null;
-  try {
-    return createWalletClientFromKey(user.wallet.privateKey as `0x${string}`);
-  } catch {
-    return null;
-  }
-}
 
 interface TxState {
   isLoading: boolean;
@@ -83,7 +74,6 @@ export function useWhitelistInfo(tokenAddress: string | undefined) {
           args: [tokenId],
         }) as boolean;
 
-        // Read whitelist config from contract storage (public mapping auto-getter)
         const whitelistConfigABI = [{
           name: 'whitelistConfig',
           type: 'function',
@@ -146,7 +136,6 @@ export function useWhitelistAllowance(tokenAddress: string | undefined, walletAd
           args: [tokenId, walletAddress as Address],
         }) as bigint;
 
-        // max uint256 means no whitelist limit (public trading)
         const MAX_UINT = 2n ** 256n - 1n;
         const isWhitelisted = remaining > 0n;
         const remainingAvax = remaining === MAX_UINT
@@ -174,52 +163,47 @@ export function useWhitelistAllowance(tokenAddress: string | undefined, walletAd
 /** Create a Forge Mode token via Cre8Manager.createTokenForge */
 export function useCreateForgeToken() {
   const [state, setState] = useState<TxState>(INITIAL_TX);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     name: string;
     symbol: string;
     creatorBuyBps: number;
     creatorBuyAvax: number;
-    whitelistDuration: number; // seconds (60-3600)
-    maxWalletAvax: number;     // e.g. 5
-    maxTxAvax: number;         // e.g. 1
+    whitelistDuration: number;
+    maxWalletAvax: number;
+    maxTxAvax: number;
     whitelistAddresses: string[];
     blacklistAddresses: string[];
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
       const buyAvax = params.creatorBuyBps > 0 && params.creatorBuyAvax > 0
-        ? parseEther(params.creatorBuyAvax.toString())
-        : 0n;
-      const creationFee = parseEther('0.02');
+        ? params.creatorBuyAvax : 0;
+      const creationFee = 0.02;
       const totalValue = creationFee + buyAvax;
 
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'createTokenForge',
-        args: [
-          params.name,
-          params.symbol,
-          BigInt(params.creatorBuyBps),
-          BigInt(params.whitelistDuration),
-          parseEther(params.maxWalletAvax.toString()),
-          parseEther(params.maxTxAvax.toString()),
-          params.whitelistAddresses as Address[],
-          params.blacklistAddresses as Address[],
-        ],
-        value: totalValue,
-        gas: 2_000_000n,
+      const hash = await serverSignTransaction({
+        action: 'createTokenForge',
+        params: {
+          name: params.name,
+          symbol: params.symbol,
+          creatorBuyBps: params.creatorBuyBps,
+          whitelistDuration: params.whitelistDuration,
+          maxWalletAvax: params.maxWalletAvax.toString(),
+          maxTxAvax: params.maxTxAvax.toString(),
+          whitelistAddresses: params.whitelistAddresses,
+          blacklistAddresses: params.blacklistAddresses,
+          avaxValue: totalValue.toString(),
+        },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
       setState({ isLoading: false, isPending: false, hash, error: null });
 
-      // Parse TokenCreatedForge event
       let tokenAddress: string | null = null;
       for (const log of receipt.logs) {
         try {
@@ -246,7 +230,7 @@ export function useCreateForgeToken() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   return { ...state, execute };
 }
@@ -254,36 +238,31 @@ export function useCreateForgeToken() {
 /** Update whitelist addresses during active whitelist phase (creator only) */
 export function useUpdateWhitelist() {
   const [state, setState] = useState<TxState>(INITIAL_TX);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (
     tokenAddress: string,
     accounts: string[],
     status: boolean,
   ) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const tokenId = await resolveTokenId(tokenAddress);
-
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'updateWhitelist',
-        args: [tokenId, accounts as Address[], status],
-        gas: 200_000n,
+      const hash = await serverSignTransaction({
+        action: 'updateWhitelist',
+        params: { tokenAddress, accounts, status },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
-      await publicClient.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
       setState({ isLoading: false, isPending: false, hash, error: null });
     } catch (err: any) {
       const msg = err?.shortMessage || err?.message || 'Whitelist update failed';
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   return { ...state, execute };
 }
@@ -291,36 +270,31 @@ export function useUpdateWhitelist() {
 /** Update blacklist addresses (creator only, any time) */
 export function useUpdateBlacklist() {
   const [state, setState] = useState<TxState>(INITIAL_TX);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (
     tokenAddress: string,
     accounts: string[],
     status: boolean,
   ) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const tokenId = await resolveTokenId(tokenAddress);
-
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'updateBlacklist',
-        args: [tokenId, accounts as Address[], status],
-        gas: 200_000n,
+      const hash = await serverSignTransaction({
+        action: 'updateBlacklist',
+        params: { tokenAddress, accounts, status },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
-      await publicClient.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
       setState({ isLoading: false, isPending: false, hash, error: null });
     } catch (err: any) {
       const msg = err?.shortMessage || err?.message || 'Blacklist update failed';
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   return { ...state, execute };
 }

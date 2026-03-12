@@ -16,6 +16,7 @@ import followRoutes from './routes/follows.js';
 import notificationRoutes from './routes/notifications.js';
 import presaleRoutes from './routes/presales.js';
 import tokenRoutes from './routes/tokens.js';
+import walletRoutes from './routes/wallet.js';
 import { startPriceIndexer } from './services/priceIndexer.js';
 import { startTradeWatcher } from './services/tradeWatcher.js';
 
@@ -86,6 +87,7 @@ app.use('/api/follows', writeLimiter, followRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/presales', presaleRoutes);
 app.use('/api/tokens', tokenRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

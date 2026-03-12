@@ -1,7 +1,5 @@
 // @ts-ignore -- viem types resolve at build time
-import { createPublicClient, createWalletClient, http, fallback } from 'viem';
-// @ts-ignore
-import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, http, fallback } from 'viem';
 // @ts-ignore
 import { avalancheFuji, avalanche } from 'viem/chains';
 import { ACTIVE_NETWORK } from './wagmi';
@@ -36,16 +34,5 @@ export const publicClient = createPublicClient({
     },
   },
 });
-
-/** Create a wallet client from a private key for signing transactions */
-export function createWalletClientFromKey(privateKey: `0x${string}`) {
-  const account = privateKeyToAccount(privateKey);
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport,
-  });
-  return { walletClient, account };
-}
 
 export { chain };

@@ -9,8 +9,6 @@ export interface PlatformUser {
   xAvatar: string;
   wallet: {
     address: string;
-    /** Real private key (0x-prefixed) — used for signing transactions */
-    privateKey: string;
   };
   creatorProfile?: CreatorProject;
   createdAt: string;
@@ -40,7 +38,6 @@ interface AuthContextType extends AuthState {
   signInWithX: () => Promise<void>;
   signOut: () => void;
   updateCreatorProfile: (profile: CreatorProject) => void;
-  showPrivateKey: () => string | null;
   /** Called by AuthCallbackPage after OAuth redirects back */
   handleAuthCallback: (sessionToken: string) => Promise<void>;
   /** Dev-only: bypass OAuth for local testing */
@@ -80,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  // Load user from localStorage on mount + validate session & re-fetch key
+  // Load user from localStorage on mount + validate session
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     const session = localStorage.getItem('cre8_session');
@@ -88,23 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored && session) {
       try {
         const parsed = JSON.parse(stored) as PlatformUser;
-        // Show user immediately (without private key) while we re-fetch
-        const userWithoutKey: PlatformUser = {
-          ...parsed,
-          wallet: { ...parsed.wallet, privateKey: '' },
-        };
-        setState({ user: userWithoutKey, isAuthenticated: true, isLoading: false });
+        // Show user immediately while we validate session
+        setState({ user: parsed, isAuthenticated: true, isLoading: false });
 
-        // Validate session + re-fetch private key from server (never stored locally)
-        Promise.all([
-          apiCall('/api/auth/session'),
-          apiCall('/api/auth/wallet-key', { method: 'POST' }),
-        ]).then(([, keyData]) => {
-          setState(s => s.user ? {
-            ...s,
-            user: { ...s.user, wallet: { ...s.user.wallet, privateKey: keyData.privateKey } },
-          } : s);
-        }).catch(() => {
+        // Validate session is still active
+        apiCall('/api/auth/session').catch(() => {
           // Session expired — force re-login
           localStorage.removeItem(STORAGE_KEY);
           localStorage.removeItem('cre8_session');
@@ -119,10 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Persist user to localStorage — NEVER store private key
+  // Persist user to localStorage (no secrets — just profile data)
   const persistUser = (user: PlatformUser) => {
-    const safe = { ...user, wallet: { address: user.wallet.address, privateKey: '' } };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   };
 
   /** Redirect to Google OAuth */
@@ -140,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** @deprecated Use signInWithGoogle */
   const signInWithX = signInWithGoogle;
 
-  /** Called by AuthCallbackPage after X redirects back */
+  /** Called by AuthCallbackPage after OAuth redirects back */
   const handleAuthCallback = async (sessionToken: string) => {
     setState(s => ({ ...s, isLoading: true }));
 
@@ -148,11 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Store session
       localStorage.setItem('cre8_session', sessionToken);
 
-      // Fetch user data
+      // Fetch user data (no private key — all signing happens server-side)
       const { user: userData } = await apiCall('/api/auth/session');
-
-      // Fetch wallet private key for signing
-      const { privateKey } = await apiCall('/api/auth/wallet-key', { method: 'POST' });
 
       const user: PlatformUser = {
         id: userData.id,
@@ -161,7 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         xAvatar: userData.xAvatar,
         wallet: {
           address: userData.walletAddress,
-          privateKey,
         },
         createdAt: new Date().toISOString(),
       };
@@ -179,7 +159,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = () => {
     const session = localStorage.getItem('cre8_session');
     if (session) {
-      // Best-effort server logout
       apiCall('/api/auth/logout', { method: 'POST' }).catch(() => {});
     }
     localStorage.removeItem(STORAGE_KEY);
@@ -194,11 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, user: updated }));
   };
 
-  const showPrivateKey = (): string | null => {
-    return state.user?.wallet.privateKey ?? null;
-  };
-
-  /** Dev-only login — bypasses X OAuth */
+  /** Dev-only login — bypasses OAuth */
   const devLogin = async () => {
     setState(s => ({ ...s, isLoading: true }));
     try {
@@ -220,7 +195,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithX,
       signOut,
       updateCreatorProfile,
-      showPrivateKey,
       handleAuthCallback,
       devLogin,
     }}>

@@ -1,21 +1,16 @@
 /**
- * Transaction hooks — write operations to Cre8Manager via viem walletClient.
+ * Transaction hooks — write operations to Cre8Manager via server-side signing.
  * Each hook exposes { isLoading, isPending, hash, error, execute }.
  *
- * Single-contract architecture: all writes go to Cre8Manager.
- * No more Router/Factory/CreatorRegistry separation.
+ * Private keys NEVER reach the browser. All signing happens on the server.
  */
 
 import { useState, useCallback } from 'react';
-import { type Address, type Hash, parseEther, decodeEventLog } from 'viem';
-import { publicClient, createWalletClientFromKey } from '@/config/client';
-import { CONTRACTS, ACTIVE_NETWORK } from '@/config/wagmi';
-import { Cre8ManagerABI, ERC20ABI, TokenCreatedEvent } from '@/config/abis';
+import { type Hash, parseEther, decodeEventLog } from 'viem';
+import { publicClient } from '@/config/client';
+import { TokenCreatedEvent } from '@/config/abis';
 import { useAuth } from '@/contexts/AuthContext';
-
-const contracts = CONTRACTS[ACTIVE_NETWORK];
-const managerAddress = contracts.Cre8Manager as Address;
-const CREATION_FEE = parseEther('0.02');
+import { serverSignTransaction } from '@/lib/serverSign';
 
 // ============ Types ============
 
@@ -33,34 +28,12 @@ const INITIAL_STATE: TxState = {
   error: null,
 };
 
-// ============ Helpers ============
-
-function useWalletClient() {
-  const { user } = useAuth();
-  if (!user?.wallet.privateKey) return null;
-  try {
-    return createWalletClientFromKey(user.wallet.privateKey as `0x${string}`);
-  } catch {
-    return null;
-  }
-}
-
-/** Resolve token address to tokenId via Cre8Manager */
-async function resolveTokenId(tokenAddress: string): Promise<bigint> {
-  return await publicClient.readContract({
-    address: managerAddress,
-    abi: Cre8ManagerABI,
-    functionName: 'getTokenByAddress',
-    args: [tokenAddress as Address],
-  }) as bigint;
-}
-
 // ============ Hooks ============
 
 /** Create a token via Cre8Manager.createToken (Easy Mode) with optional creator initial buy */
 export function useCreateTokenAndBuy() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     name: string;
@@ -73,29 +46,23 @@ export function useCreateTokenAndBuy() {
     creatorBuyBps: number;
     creatorBuyAvax: number;
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      // msg.value = creation fee + actual AVAX for initial buy
       const buyAvax = params.creatorBuyBps > 0 && params.creatorBuyAvax > 0
-        ? parseEther(params.creatorBuyAvax.toString())
-        : 0n;
-      const totalValue = CREATION_FEE + buyAvax;
+        ? params.creatorBuyAvax : 0;
+      const creationFee = 0.02;
+      const totalValue = creationFee + buyAvax;
 
-      // Cre8Manager.createToken(name, symbol, creatorBuyBps)
-      // Metadata (description, image, socials) stored in backend, not on-chain
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'createToken',
-        args: [
-          params.name,
-          params.symbol,
-          BigInt(params.creatorBuyBps),
-        ],
-        value: totalValue,
-        gas: 1_500_000n,
+      const hash = await serverSignTransaction({
+        action: 'createToken',
+        params: {
+          name: params.name,
+          symbol: params.symbol,
+          creatorBuyBps: params.creatorBuyBps,
+          avaxValue: totalValue.toString(),
+        },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -129,38 +96,34 @@ export function useCreateTokenAndBuy() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
 
   return { ...state, execute, reset };
 }
 
-/** Buy tokens on bonding curve via Cre8Manager.buy(tokenId, minTokensOut, deadline) */
+/** Buy tokens on bonding curve via Cre8Manager.buy */
 export function useBuy() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     tokenAddress: string;
     avaxAmount: number;
     minTokensOut: bigint;
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const tokenId = await resolveTokenId(params.tokenAddress);
-      const value = parseEther(params.avaxAmount.toString());
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 300); // 5 min
-
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'buy',
-        args: [tokenId, params.minTokensOut, deadline],
-        value,
-        gas: 300_000n,
+      const hash = await serverSignTransaction({
+        action: 'buy',
+        params: {
+          tokenAddress: params.tokenAddress,
+          minTokensOut: params.minTokensOut.toString(),
+          avaxValue: params.avaxAmount.toString(),
+        },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -172,7 +135,7 @@ export function useBuy() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
 
@@ -180,31 +143,29 @@ export function useBuy() {
 }
 
 /**
- * Sell tokens via Cre8Manager.sell(tokenId, amount, minAvaxOut, deadline).
+ * Sell tokens via Cre8Manager.sell.
  * No ERC20 approve needed — Cre8Manager is the token owner and burns directly.
  */
 export function useSell() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     tokenAddress: string;
     tokenAmount: bigint;
     minAvaxOut: bigint;
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const tokenId = await resolveTokenId(params.tokenAddress);
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-
-      const hash = await wallet.walletClient.writeContract({
-        address: managerAddress,
-        abi: Cre8ManagerABI,
-        functionName: 'sell',
-        args: [tokenId, params.tokenAmount, params.minAvaxOut, deadline],
-        gas: 300_000n,
+      const hash = await serverSignTransaction({
+        action: 'sell',
+        params: {
+          tokenAddress: params.tokenAddress,
+          tokenAmount: params.tokenAmount.toString(),
+          minAvaxOut: params.minAvaxOut.toString(),
+        },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -216,7 +177,7 @@ export function useSell() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
 
@@ -226,19 +187,19 @@ export function useSell() {
 /** Send AVAX to any address */
 export function useSendAVAX() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     to: string;
     amount: number;
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const hash = await wallet.walletClient.sendTransaction({
-        to: params.to as Address,
-        value: parseEther(params.amount.toString()),
+      const hash = await serverSignTransaction({
+        action: 'sendAvax',
+        params: { to: params.to, amount: params.amount.toString() },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -250,7 +211,7 @@ export function useSendAVAX() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
   return { ...state, execute, reset };
@@ -259,23 +220,24 @@ export function useSendAVAX() {
 /** Send ERC20 tokens to any address */
 export function useSendToken() {
   const [state, setState] = useState<TxState>(INITIAL_STATE);
-  const wallet = useWalletClient();
+  const { isAuthenticated } = useAuth();
 
   const execute = useCallback(async (params: {
     tokenAddress: string;
     to: string;
     amount: bigint;
   }) => {
-    if (!wallet) throw new Error('Not authenticated');
+    if (!isAuthenticated) throw new Error('Not authenticated');
     setState({ isLoading: true, isPending: false, hash: null, error: null });
 
     try {
-      const hash = await wallet.walletClient.writeContract({
-        address: params.tokenAddress as Address,
-        abi: ERC20ABI,
-        functionName: 'transfer',
-        args: [params.to as Address, params.amount],
-        gas: 65_000n,
+      const hash = await serverSignTransaction({
+        action: 'sendToken',
+        params: {
+          tokenAddress: params.tokenAddress,
+          to: params.to,
+          amount: params.amount.toString(),
+        },
       });
 
       setState(s => ({ ...s, isPending: true, hash }));
@@ -287,7 +249,7 @@ export function useSendToken() {
       setState({ isLoading: false, isPending: false, hash: null, error: msg });
       throw err;
     }
-  }, [wallet]);
+  }, [isAuthenticated]);
 
   const reset = useCallback(() => setState(INITIAL_STATE), []);
   return { ...state, execute, reset };

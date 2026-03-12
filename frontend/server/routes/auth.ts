@@ -2,10 +2,10 @@ import { Router, type Request, type Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import {
   findUserByTwitterId, findUserById, createUser, updateUserProfile,
-  findValidSession, findValidSessionWithKeys, createSession, deleteSession,
+  findValidSession, createSession, deleteSession,
   isVerifiedCreator, createApplication, reviewApplication,
 } from '../database.js';
-import { generateWallet, decryptPrivateKey } from '../services/wallet.js';
+import { generateWallet } from '../services/wallet.js';
 import { generateAuthLink, handleCallback } from '../services/twitter.js';
 
 const router = Router();
@@ -112,33 +112,6 @@ router.get('/session', async (req: Request, res: Response) => {
       walletAddress: result.user.wallet_address,
     },
   });
-});
-
-// ============ POST /api/auth/wallet-key ============
-router.post('/wallet-key', async (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing session token' });
-    return;
-  }
-
-  const result = await findValidSessionWithKeys(authHeader.slice(7));
-  if (!result) {
-    res.status(401).json({ error: 'Invalid or expired session' });
-    return;
-  }
-
-  try {
-    const privateKey = decryptPrivateKey(
-      result.user.encrypted_private_key,
-      result.user.encryption_iv,
-      result.user.encryption_tag,
-    );
-    res.json({ privateKey });
-  } catch (err: any) {
-    console.error('Failed to decrypt wallet key:', err);
-    res.status(500).json({ error: 'Failed to retrieve wallet key' });
-  }
 });
 
 // ============ POST /api/auth/dev-login (local testing only) ============
