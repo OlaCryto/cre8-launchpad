@@ -1,10 +1,45 @@
 import { Router, type Response } from 'express';
+import { createPublicClient, http, type Address } from 'viem';
+import { avalancheFuji } from 'viem/chains';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { param, isValidAddress } from '../middleware/validation.js';
 import {
   createPresaleEvent, getPresaleEvents, getPresaleByLaunchId,
   getFollowerAddresses, createBulkNotifications,
 } from '../database.js';
+
+// ============ On-chain creator verification ============
+
+const RPC_URL = process.env.FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+const MANAGER_ADDRESS = (process.env.CRE8_MANAGER_ADDRESS || '0x4e972F92461AE6bc080411723C856996Dbe1591E') as Address;
+
+const verifyClient = createPublicClient({ chain: avalancheFuji, transport: http(RPC_URL) });
+
+const TokenParamsABI = [{
+  name: 'tokenParams', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'tokenId', type: 'uint256' }],
+  outputs: [
+    { name: 'tokenAddress', type: 'address' },
+    { name: 'creator', type: 'address' },
+    { name: 'createdAt', type: 'uint256' },
+    { name: 'graduated', type: 'bool' },
+  ],
+}] as const;
+
+async function verifyOnChainCreatorByTokenId(tokenId: number, walletAddress: string): Promise<boolean> {
+  try {
+    const params = await verifyClient.readContract({
+      address: MANAGER_ADDRESS,
+      abi: TokenParamsABI,
+      functionName: 'tokenParams',
+      args: [BigInt(tokenId)],
+    }) as any;
+    const onChainCreator = (params[1] || params.creator) as string;
+    return onChainCreator.toLowerCase() === walletAddress.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 
 const router = Router();
 
@@ -43,6 +78,13 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       return;
     }
 
+    // Verify caller is the actual on-chain creator of this launch — prevents spoofing
+    const isCreator = await verifyOnChainCreatorByTokenId(parsedLaunchId, req.sessionUser!.wallet_address);
+    if (!isCreator) {
+      res.status(403).json({ error: 'You are not the on-chain creator of this token' });
+      return;
+    }
+
     const result = await createPresaleEvent({
       launch_id: parsedLaunchId,
       creator_address: req.sessionUser!.wallet_address,
@@ -66,7 +108,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
 router.get('/', async (req, res) => {
   try {
     const status = req.query.status as string | undefined;
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 20, 50));
     const events = await getPresaleEvents(status, limit);
     res.json({ presales: events });
   } catch (err: any) {

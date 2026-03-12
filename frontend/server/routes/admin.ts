@@ -26,7 +26,7 @@ function requireAdmin(req: Request, res: Response, next: () => void) {
 }
 
 router.get('/applications', requireAdmin, async (req: Request, res: Response) => {
-  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 20, 100));
   const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
   const status = req.query.status as string;
 

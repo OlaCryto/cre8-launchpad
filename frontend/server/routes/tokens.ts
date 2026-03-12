@@ -1,9 +1,60 @@
 import { Router, type Request, type Response } from 'express';
+import { createPublicClient, http, type Address } from 'viem';
+import { avalancheFuji } from 'viem/chains';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { registerTokenCreator, getTokenCreator, getTokensByCreator } from '../database.js';
 import { isValidAddress, param } from '../middleware/validation.js';
 
 const router = Router();
+
+// ============ On-chain creator verification ============
+
+const RPC_URL = process.env.FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+const MANAGER_ADDRESS = (process.env.CRE8_MANAGER_ADDRESS || '0x4e972F92461AE6bc080411723C856996Dbe1591E') as Address;
+
+const verifyClient = createPublicClient({ chain: avalancheFuji, transport: http(RPC_URL) });
+
+const TokenParamsABI = [
+  {
+    name: 'getTokenByAddress', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'tokenAddr', type: 'address' }],
+    outputs: [{ name: 'tokenId', type: 'uint256' }],
+  },
+  {
+    name: 'tokenParams', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [
+      { name: 'tokenAddress', type: 'address' },
+      { name: 'creator', type: 'address' },
+      { name: 'createdAt', type: 'uint256' },
+      { name: 'graduated', type: 'bool' },
+    ],
+  },
+] as const;
+
+/** Verify that walletAddress is the on-chain creator of tokenAddress */
+export async function verifyOnChainCreator(tokenAddress: string, walletAddress: string): Promise<boolean> {
+  try {
+    const tokenId = await verifyClient.readContract({
+      address: MANAGER_ADDRESS,
+      abi: TokenParamsABI,
+      functionName: 'getTokenByAddress',
+      args: [tokenAddress as Address],
+    });
+
+    const params = await verifyClient.readContract({
+      address: MANAGER_ADDRESS,
+      abi: TokenParamsABI,
+      functionName: 'tokenParams',
+      args: [tokenId],
+    }) as any;
+
+    const onChainCreator = (params[1] || params.creator) as string;
+    return onChainCreator.toLowerCase() === walletAddress.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 
 // POST /api/tokens/register — called by frontend after successful token creation
 router.post('/register', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -20,6 +71,13 @@ router.post('/register', requireAuth, async (req: AuthenticatedRequest, res: Res
     }
     if (!token_symbol || typeof token_symbol !== 'string') {
       res.status(400).json({ error: 'token_symbol is required' });
+      return;
+    }
+
+    // Verify caller is the actual on-chain creator — prevents spoofing
+    const isCreator = await verifyOnChainCreator(token_address, req.sessionUser!.wallet_address);
+    if (!isCreator) {
+      res.status(403).json({ error: 'You are not the on-chain creator of this token' });
       return;
     }
 

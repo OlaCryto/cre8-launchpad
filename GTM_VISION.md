@@ -194,6 +194,8 @@ These are conservative estimates. Pump.fun peaked at $15M/day. Even capturing 1%
 **Goal:** Launch on Avalanche C-Chain mainnet with initial traction
 
 - Deploy verified contracts to mainnet
+- Transfer contract ownership to a **Gnosis Safe multisig** (multi-sig required for any admin action)
+- Once stable: **permanently renounce upgrade ability** — making the contract fully immutable and trustless
 - Launch campaign: "The first token launchpad on Avalanche"
 - Incentivized launch week: Reduced creation fees, highlighted tokens on homepage
 - Creator onboarding push: First 50 verified creators get featured placement

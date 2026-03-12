@@ -61,7 +61,7 @@ Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. Th
 | Liquidity Reserve | 200,000,000 (20%) — locked until graduation |
 | Creation Fee | 0.02 AVAX (~$1) |
 | Creator Initial Buy | 0-20% of supply at launch |
-| Trading Fee | 1% per trade (0.8% platform + 0.2% creator) |
+| Trading Fee | 1% per trade (protocol fee, configurable creator share via `setFeeConfig`) |
 | Graduation Threshold | 69,000 AVAX market cap -> auto-migrate to TraderJoe |
 | LP Lock | 1 year after graduation |
 
@@ -76,6 +76,15 @@ Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. Th
 | Max Wallet | 2% of supply | Configurable by creator |
 | Launch Protection | 5-minute window | Whitelist phase (1-60 min) |
 | Blacklist | - | Creator can block addresses |
+
+---
+
+## Mainnet Security Roadmap
+
+Cre8Manager uses a UUPS proxy pattern — upgradeable during testnet for rapid iteration. For mainnet:
+
+1. **Multisig ownership** — Contract ownership will transfer to a Gnosis Safe multisig, requiring multiple signatures for any admin action
+2. **Immutability** — Once the contract is battle-tested and stable, upgrade ability will be permanently renounced, making the contract fully immutable and trustless
 
 ---
 

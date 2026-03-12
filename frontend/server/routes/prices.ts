@@ -13,7 +13,7 @@ router.get('/:tokenAddress', validateTokenAddress, async (req: Request, res: Res
 
 router.get('/:tokenAddress/history', validateTokenAddress, async (req: Request, res: Response) => {
   const tokenAddress = param(req, 'tokenAddress');
-  const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
   const history = await getPriceHistory(tokenAddress, limit);
   res.json(history);
 });

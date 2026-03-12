@@ -14,7 +14,7 @@ const commentWriteLimiter = rateLimit({
 
 router.get('/:tokenAddress', validateTokenAddress, optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   const tokenAddress = param(req, 'tokenAddress');
-  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 20, 100));
   const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
   const { comments, total } = await getComments(tokenAddress, limit, offset);

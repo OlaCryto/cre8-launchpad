@@ -8,8 +8,8 @@ const router = Router();
 // ============ GET /api/notifications ============
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 50, 100));
+    const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
     const result = await getNotifications(req.sessionUser!.wallet_address, limit, offset);
     res.json(result);
   } catch (err: any) {
