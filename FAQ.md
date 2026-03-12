@@ -79,12 +79,12 @@ The verified badge appears next to your name across the platform. It tells users
 ## Bonding Curve & Trading
 
 ### How does the bonding curve work?
-Every Cre8 token trades on a linear bonding curve before graduation. When you buy, new tokens are minted and the price goes up. When you sell, tokens are burned and the price goes down. The curve provides guaranteed liquidity at all times.
+Every Cre8 token trades on a virtual constant-product bonding curve (Pump.fun-style) before graduation. When you buy, new tokens are minted and the price goes up exponentially. When you sell, tokens are burned and the price goes down. The curve provides guaranteed liquidity at all times.
 
 ### What is the pricing formula?
-`Price = basePrice + (slope × currentSupply)`
+Cre8 uses a virtual constant-product AMM: `Price = virtualAvax × virtualTokens / effectiveTokens²`
 
-The price increases linearly as more tokens are bought.
+Early buyers get dramatically more tokens per AVAX than later buyers — the price accelerates as supply is purchased, creating strong early-buyer incentives.
 
 ### What is the total supply per token?
 1,000,000,000 (1 billion) tokens per launch. 80% (800M) is available on the bonding curve, and 20% (200M) is reserved for DEX liquidity at graduation.
@@ -97,7 +97,7 @@ The price increases linearly as more tokens are bought.
 Creators earn passive income from their token's trading volume.
 
 ### What is graduation?
-When a token's market cap hits **69,000 AVAX**, it "graduates" — trading on the bonding curve stops, the reserved 20% of tokens is paired with accumulated AVAX, liquidity is added to TraderJoe DEX, and LP tokens are locked for 1 year. The token is now tradeable on the open market.
+When a token's market cap hits **420 AVAX**, it "graduates" — trading on the bonding curve stops, the reserved 20% of tokens is paired with accumulated AVAX, liquidity is added to TraderJoe DEX, and LP tokens are locked for 1 year. The token is now tradeable on the open market.
 
 ### Is graduation automatic?
 Yes. No human intervention is needed. The smart contract handles the entire migration process.

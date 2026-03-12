@@ -51,8 +51,8 @@ contract Cre8Manager is
     }
 
     struct CurveConfig {
-        uint256 basePrice;
-        uint256 slope;
+        uint256 virtualAvax;
+        uint256 virtualTokens;
         uint256 maxSupply;
         uint256 graduationThreshold;
     }
@@ -135,9 +135,10 @@ contract Cre8Manager is
     uint256 internal constant PRECISION = 1e18;
     uint256 internal constant BPS_DENOMINATOR = 10000;
 
-    uint256 internal constant DEFAULT_BASE_PRICE = 1e12;
+    uint256 internal constant DEFAULT_VIRTUAL_AVAX = 30 ether;
+    uint256 internal constant DEFAULT_VIRTUAL_TOKENS = 1_073_000_000 * 1e18;
     uint256 internal constant DEFAULT_MAX_SUPPLY = 800_000_000 * 1e18;
-    uint256 internal constant DEFAULT_GRADUATION_THRESHOLD = 69_000 ether;
+    uint256 internal constant DEFAULT_GRADUATION_THRESHOLD = 420 ether;
     uint256 internal constant LIQUIDITY_SUPPLY = 200_000_000 * 1e18;
 
     uint256 public constant MAX_CREATOR_BUY_BPS = 2000;
@@ -188,8 +189,8 @@ contract Cre8Manager is
         protocolFeeDestination = protocolFeeDestination_;
 
         curveConfig = CurveConfig({
-            basePrice: DEFAULT_BASE_PRICE,
-            slope: 0,
+            virtualAvax: DEFAULT_VIRTUAL_AVAX,
+            virtualTokens: DEFAULT_VIRTUAL_TOKENS,
             maxSupply: DEFAULT_MAX_SUPPLY,
             graduationThreshold: DEFAULT_GRADUATION_THRESHOLD
         });
@@ -340,10 +341,12 @@ contract Cre8Manager is
         if (tokenParams[tokenId].tokenAddress == address(0)) revert LaunchpadErrors.TokenNotFound();
         if (tokenParams[tokenId].graduated) revert LaunchpadErrors.TokenAlreadyGraduated();
 
-        // Whitelist enforcement
-        _enforceWhitelist(tokenId, msg.sender, msg.value);
+        // Whitelist: check eligibility before buy, track actual spend after
+        _checkWhitelistEligibility(tokenId, msg.sender, msg.value);
 
-        uint256 tokensOut = _buy(tokenId, msg.value, msg.sender);
+        (uint256 tokensOut, uint256 avaxUsed) = _buy(tokenId, msg.value, msg.sender);
+
+        _trackWhitelistSpend(tokenId, msg.sender, avaxUsed);
 
         if (tokensOut < minTokensOut) revert LaunchpadErrors.SlippageExceeded();
 
@@ -403,12 +406,13 @@ contract Cre8Manager is
     // ============ Internal: Whitelist Enforcement ============
 
     /**
-     * @notice Enforces whitelist rules during WL phase. No-op if WL is not active.
-     * @dev Fixed AVAX amounts instead of percentages:
-     *      - maxTxAvax: limits each buy transaction (preserves fairness)
-     *      - maxWalletAvax: limits total spend per wallet (prevents whale accumulation)
+     * @notice Check whitelist eligibility (view-only, no state changes).
+     * @dev Called BEFORE _buy() to validate the user can trade.
+     *      Spending is tracked separately via _trackWhitelistSpend() AFTER
+     *      _buy() returns the actual AVAX used, so supply-cap refunds
+     *      don't inflate the tracked wallet spend.
      */
-    function _enforceWhitelist(uint256 tokenId, address buyer, uint256 avaxAmount) internal {
+    function _checkWhitelistEligibility(uint256 tokenId, address buyer, uint256 avaxAmount) internal view {
         WhitelistConfig memory wl = whitelistConfig[tokenId];
 
         // No whitelist configured (Easy Mode) or whitelist phase ended
@@ -420,42 +424,57 @@ contract Cre8Manager is
         // Max per transaction
         if (avaxAmount > wl.maxTxAvax) revert LaunchpadErrors.MaxTransactionExceeded();
 
-        // Max per wallet (cumulative)
+        // Max per wallet (cumulative) — pre-check against intended spend
         uint256 totalSpent = walletSpentDuringWL[tokenId][buyer] + avaxAmount;
         if (totalSpent > wl.maxWalletAvax) revert LaunchpadErrors.MaxWalletExceeded();
+    }
 
-        // Track spending
-        walletSpentDuringWL[tokenId][buyer] = totalSpent;
+    /**
+     * @notice Track actual AVAX spent during whitelist phase.
+     * @dev Called AFTER _buy() with the real amount used (cost + fees),
+     *      not msg.value, to avoid overcounting when supply-cap refunds occur.
+     */
+    function _trackWhitelistSpend(uint256 tokenId, address buyer, uint256 avaxUsed) internal {
+        WhitelistConfig memory wl = whitelistConfig[tokenId];
+        if (wl.endTime == 0 || block.timestamp > wl.endTime) return;
+        walletSpentDuringWL[tokenId][buyer] += avaxUsed;
     }
 
     // ============ Internal: Trading ============
 
-    function _buy(uint256 tokenId, uint256 avaxAmount, address buyer) internal returns (uint256 tokensOut) {
+    function _buy(uint256 tokenId, uint256 avaxAmount, address buyer) internal returns (uint256 tokensOut, uint256 avaxUsed) {
         FeeData memory fees = _calculateFees(tokenId, avaxAmount);
         uint256 buyAmount = avaxAmount - fees.totalFee;
 
         uint256 currentSupply = tokenSupply[tokenId];
         tokensOut = BondingCurveMath.calculatePurchaseReturn(
-            buyAmount, currentSupply, curveConfig.basePrice, curveConfig.slope
+            buyAmount, currentSupply, curveConfig.virtualAvax, curveConfig.virtualTokens
         );
 
         if (tokensOut == 0) revert LaunchpadErrors.ZeroAmount();
 
-        // Cap at max supply and refund excess
+        // Cap at max supply — recalculate fees proportionally and refund excess
         uint256 remaining = curveConfig.maxSupply - currentSupply;
         if (tokensOut > remaining) {
             tokensOut = remaining;
             if (tokensOut == 0) revert LaunchpadErrors.MaxSupplyReached();
 
             uint256 actualCost = BondingCurveMath.calculateBuyCost(
-                tokensOut, currentSupply, curveConfig.basePrice, curveConfig.slope
+                tokensOut, currentSupply, curveConfig.virtualAvax, curveConfig.virtualTokens
             );
-            uint256 excess = buyAmount - actualCost;
-            if (excess > 0) {
-                buyAmount = actualCost;
-                payable(buyer).transfer(excess);
+
+            // Recalculate fees on actual cost, not original amount
+            fees = _calculateFees(tokenId, actualCost);
+            buyAmount = actualCost;
+
+            // Refund unused AVAX (excess buy amount + excess fees)
+            uint256 totalUsed = actualCost + fees.totalFee;
+            if (avaxAmount > totalUsed) {
+                payable(buyer).transfer(avaxAmount - totalUsed);
             }
         }
+
+        avaxUsed = buyAmount + fees.totalFee;
 
         // Update state (CEI pattern)
         tokenSupply[tokenId] = currentSupply + tokensOut;
@@ -465,7 +484,7 @@ contract Cre8Manager is
         _distributeFees(fees);
 
         uint256 newPrice = BondingCurveMath.getCurrentPrice(
-            tokenSupply[tokenId], curveConfig.basePrice, curveConfig.slope
+            tokenSupply[tokenId], curveConfig.virtualAvax, curveConfig.virtualTokens
         );
 
         emit Buy(buyer, tokenId, avaxAmount, tokensOut, tokenSupply[tokenId], newPrice);
@@ -480,7 +499,7 @@ contract Cre8Manager is
         if (userBalance < tokenAmount) revert LaunchpadErrors.InsufficientBalance();
 
         uint256 grossAvax = BondingCurveMath.calculateSaleReturn(
-            tokenAmount, currentSupply, curveConfig.basePrice, curveConfig.slope
+            tokenAmount, currentSupply, curveConfig.virtualAvax, curveConfig.virtualTokens
         );
         if (grossAvax > tokenBalance[tokenId]) revert LaunchpadErrors.InsufficientReserve();
 
@@ -496,7 +515,7 @@ contract Cre8Manager is
         _distributeFees(fees);
 
         uint256 newPrice = BondingCurveMath.getCurrentPrice(
-            tokenSupply[tokenId], curveConfig.basePrice, curveConfig.slope
+            tokenSupply[tokenId], curveConfig.virtualAvax, curveConfig.virtualTokens
         );
 
         emit Sell(seller, tokenId, tokenAmount, netAvax, tokenSupply[tokenId], newPrice);
@@ -536,7 +555,7 @@ contract Cre8Manager is
     function _isGraduationReady(uint256 tokenId) internal view returns (bool) {
         uint256 totalTokenSupply = Cre8Token(tokenParams[tokenId].tokenAddress).MAX_SUPPLY();
         uint256 marketCap = BondingCurveMath.calculateMarketCap(
-            tokenSupply[tokenId], totalTokenSupply, curveConfig.basePrice, curveConfig.slope
+            tokenSupply[tokenId], totalTokenSupply, curveConfig.virtualAvax, curveConfig.virtualTokens
         );
         return marketCap >= curveConfig.graduationThreshold;
     }
@@ -602,9 +621,9 @@ contract Cre8Manager is
         if (p.tokenAddress == address(0)) revert LaunchpadErrors.TokenNotFound();
 
         uint256 supply = tokenSupply[tokenId];
-        uint256 price = BondingCurveMath.getCurrentPrice(supply, curveConfig.basePrice, curveConfig.slope);
+        uint256 price = BondingCurveMath.getCurrentPrice(supply, curveConfig.virtualAvax, curveConfig.virtualTokens);
         uint256 totalTokenSupply = Cre8Token(p.tokenAddress).MAX_SUPPLY();
-        uint256 mCap = BondingCurveMath.calculateMarketCap(supply, totalTokenSupply, curveConfig.basePrice, curveConfig.slope);
+        uint256 mCap = BondingCurveMath.calculateMarketCap(supply, totalTokenSupply, curveConfig.virtualAvax, curveConfig.virtualTokens);
 
         uint256 progress = mCap >= curveConfig.graduationThreshold
             ? BPS_DENOMINATOR
@@ -623,7 +642,7 @@ contract Cre8Manager is
         fee = fees.totalFee;
         uint256 buyAmount = avaxAmount - fee;
         tokensOut = BondingCurveMath.calculatePurchaseReturn(
-            buyAmount, tokenSupply[tokenId], curveConfig.basePrice, curveConfig.slope
+            buyAmount, tokenSupply[tokenId], curveConfig.virtualAvax, curveConfig.virtualTokens
         );
         uint256 remaining = curveConfig.maxSupply - tokenSupply[tokenId];
         if (tokensOut > remaining) tokensOut = remaining;
@@ -631,7 +650,7 @@ contract Cre8Manager is
 
     function getSellQuote(uint256 tokenId, uint256 tokenAmount) external view returns (uint256 avaxOut, uint256 fee) {
         uint256 grossAvax = BondingCurveMath.calculateSaleReturn(
-            tokenAmount, tokenSupply[tokenId], curveConfig.basePrice, curveConfig.slope
+            tokenAmount, tokenSupply[tokenId], curveConfig.virtualAvax, curveConfig.virtualTokens
         );
         FeeData memory fees = _calculateFees(tokenId, grossAvax);
         fee = fees.totalFee;
@@ -639,7 +658,7 @@ contract Cre8Manager is
     }
 
     function getCurrentPrice(uint256 tokenId) external view returns (uint256) {
-        return BondingCurveMath.getCurrentPrice(tokenSupply[tokenId], curveConfig.basePrice, curveConfig.slope);
+        return BondingCurveMath.getCurrentPrice(tokenSupply[tokenId], curveConfig.virtualAvax, curveConfig.virtualTokens);
     }
 
     /// @notice Check if whitelist is currently active for a token
@@ -676,8 +695,10 @@ contract Cre8Manager is
         liquidityManager = lm;
     }
 
-    function setCurveConfig(uint256 basePrice_, uint256 slope_, uint256 maxSupply_, uint256 graduationThreshold_) external onlyOwner {
-        curveConfig = CurveConfig(basePrice_, slope_, maxSupply_, graduationThreshold_);
+    function setCurveConfig(uint256 virtualAvax_, uint256 virtualTokens_, uint256 maxSupply_, uint256 graduationThreshold_) external onlyOwner {
+        if (virtualAvax_ == 0 || virtualTokens_ == 0) revert LaunchpadErrors.ZeroAmount();
+        if (maxSupply_ >= virtualTokens_) revert LaunchpadErrors.InvalidInput();
+        curveConfig = CurveConfig(virtualAvax_, virtualTokens_, maxSupply_, graduationThreshold_);
     }
 
     function pause() external onlyOwner { _pause(); }

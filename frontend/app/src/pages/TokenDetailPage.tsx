@@ -877,7 +877,7 @@ export function TokenDetailPage() {
             </div>
 
             {/* Bonding Curve */}
-            <BondingCurveViz progress={graduationProgress} reserveBalance={reserveBalance} targetReserve={69000} currentPrice={currentPrice} isGraduated={!!launchData?.isGraduated} />
+            <BondingCurveViz progress={graduationProgress} reserveBalance={reserveBalance} targetReserve={420} currentPrice={currentPrice} isGraduated={!!launchData?.isGraduated} />
 
             {/* Top Holders */}
             <div className="surface overflow-hidden">

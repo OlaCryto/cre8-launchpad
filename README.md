@@ -17,7 +17,7 @@ Open, fast, permissionless. For meme coins, community tokens, and experiments.
 - Launch a token in under 60 seconds for 0.02 AVAX (~$1)
 - No registration required — connect wallet and go
 - Bonding curve pricing with automatic price discovery
-- Auto-graduation to TraderJoe DEX at 69,000 AVAX market cap
+- Auto-graduation to TraderJoe DEX at 420 AVAX market cap
 
 ### Forge Mode (Creator)
 Structured launches for verified creators with anti-bot protection.
@@ -48,7 +48,7 @@ External:
   LiquidityLocker  -> LP token locking (1 year)
 ```
 
-Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. The bonding curve math is embedded in Cre8Manager — no separate curve contracts needed.
+Each token is deployed as a standalone ERC20. The bonding curve math (virtual constant-product AMM, Pump.fun-style) is embedded in Cre8Manager — no separate curve contracts needed.
 
 ---
 
@@ -62,7 +62,7 @@ Each token is deployed as an EIP-1167 minimal proxy clone for gas efficiency. Th
 | Creation Fee | 0.02 AVAX (~$1) |
 | Creator Initial Buy | 0-20% of supply at launch |
 | Trading Fee | 1% per trade (protocol fee, configurable creator share via `setFeeConfig`) |
-| Graduation Threshold | 69,000 AVAX market cap -> auto-migrate to TraderJoe |
+| Graduation Threshold | 420 AVAX market cap -> auto-migrate to TraderJoe |
 | LP Lock | 1 year after graduation |
 
 ---
@@ -95,7 +95,7 @@ Cre8Manager is **source-verified** on [SnowScan](https://testnet.snowscan.xyz), 
 | Contract | Address | Verified |
 |----------|---------|----------|
 | **Cre8Manager (Proxy)** | [`0x4e972F92461AE6bc080411723C856996Dbe1591E`](https://testnet.snowscan.xyz/address/0x4e972F92461AE6bc080411723C856996Dbe1591E) | Yes |
-| Cre8Manager (Implementation) | [`0x0DA5F904533064c89d7d90ef23bB75b3c7379FF6`](https://testnet.snowscan.xyz/address/0x0DA5F904533064c89d7d90ef23bB75b3c7379FF6) | Yes |
+| Cre8Manager (Implementation v2) | [`0x03b9AC024b9866ce292768e340a9CC3e7F29073A`](https://testnet.snowscan.xyz/address/0x03b9AC024b9866ce292768e340a9CC3e7F29073A) | - |
 | LiquidityManager | [`0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47`](https://testnet.snowscan.xyz/address/0xcB9267e247ee1530066dBf6387f7A4c1EB7d4E47) | - |
 | LiquidityLocker | [`0xa0fC9fFa9595D9976341C9d998819fD33fc351c2`](https://testnet.snowscan.xyz/address/0xa0fC9fFa9595D9976341C9d998819fD33fc351c2) | - |
 

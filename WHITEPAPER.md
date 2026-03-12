@@ -70,9 +70,9 @@ Trenches is the permissionless lane. It mirrors the pump.fun model and is design
 No verification required. No approval process. The token is tradeable immediately.
 
 **Mechanics:**
-- Linear bonding curve: `Price = basePrice + (slope × supply)`
+- Virtual constant-product bonding curve (Pump.fun-style): price increases exponentially as supply is bought
 - 80% of supply available on the curve, 20% reserved for DEX liquidity
-- At 69,000 AVAX market cap, the token automatically "graduates" — liquidity migrates to TraderJoe with a 1-year LP lock
+- At 420 AVAX market cap (~87 AVAX invested), the token automatically "graduates" — liquidity migrates to TraderJoe with a 1-year LP lock
 - Anti-bot protection: 30-second trade cooldown, 1% max transaction, 2% max wallet, 5-minute launch protection window
 
 ### 2.2 Forge Mode (Creator Mode)
@@ -110,20 +110,23 @@ Forge:     Verify → Create Form → Configure Presale → Deploy → Vault Ope
 
 ### 3.2 Bonding Curve Mechanics
 
-Every Cre8 token trades on a linear bonding curve before graduation:
+Every Cre8 token trades on a virtual constant-product bonding curve (Pump.fun-style) before graduation:
 
 ```
-Price = basePrice + (slope × currentSupply)
+Price = (virtualAvax × virtualTokens) / effectiveTokens²
+where effectiveTokens = virtualTokens - currentSupply
 ```
 
-- **Buying** mints new tokens from the curve, increasing the price
+- **Buying** mints new tokens from the curve, increasing the price exponentially
 - **Selling** burns tokens back to the curve, decreasing the price
 - The curve provides guaranteed liquidity at all times — no liquidity pool needed
-- 1% trading fee on every transaction (0.8% to platform, 0.2% to creator)
+- Early buyers get dramatically more tokens per AVAX — price accelerates as supply fills
+- ~87 AVAX total investment fills the curve to graduation
+- 1% trading fee on every transaction (protocol fee, configurable creator share)
 
 ### 3.3 Graduation
 
-When a token's market cap reaches **69,000 AVAX** (~$1.5M at current prices):
+When a token's market cap reaches **420 AVAX** (~$10.5K at current prices):
 
 1. Trading on the bonding curve stops
 2. The reserved 20% of token supply is paired with accumulated AVAX
@@ -183,7 +186,7 @@ Cre8 uses a modular contract architecture where each contract handles a single r
 | **LaunchpadRouterV2** | Single entry point for all user interactions (create, buy, sell) |
 | **LaunchpadFactoryV2** | Deploys token + bonding curve pairs as minimal proxy clones |
 | **LaunchpadTokenV2** | ERC20 with whitelist/blacklist and trading phase enforcement |
-| **BondingCurveV2** | Linear pricing engine, handles buy/sell execution |
+| **BondingCurveV2** | Constant-product pricing engine, handles buy/sell execution |
 | **FeeManager** | Collects and distributes trading fees (platform + creator split) |
 | **LiquidityManager** | Handles graduation — adds liquidity to TraderJoe |
 | **LiquidityLocker** | Locks LP tokens with time-based release |
@@ -237,8 +240,8 @@ Cre8 is built exclusively on Avalanche C-Chain for several reasons:
 |---------|-------------------|-------------------|-------------------|
 | Chain | Solana | Avalanche | Avalanche |
 | Launch cost | ~$1 | Varies | ~$1 (0.02 AVAX) |
-| Bonding curve | Exponential | AMM-style | Linear |
-| Auto-graduation | Yes ($69K) | No | Yes (69K AVAX) |
+| Bonding curve | Exponential | AMM-style | Virtual constant-product (Pump.fun-style) |
+| Auto-graduation | Yes ($69K) | No | Yes (420 AVAX) |
 | LP lock | Burned | N/A | 1-year lock |
 | Anti-bot | Limited | Limited | Full suite |
 | Creator verification | No | No | Yes (Forge Mode) |

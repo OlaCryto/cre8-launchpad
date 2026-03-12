@@ -128,9 +128,9 @@ Feedback from Build Games community testing on Fuji testnet.
 - **Status:** [ ] Pending — need to verify on SnowScan/Snowtrace
 
 #### 13. Bonding curve slope=0, ~$640k to graduate
-- **Issue:** Constant price curve (slope=0) means price never goes up. At base price of 1e12, graduation requires 69,000 AVAX (~$1.7M+ at $25/AVAX) which is unreachable on testnet.
-- **Assessment:** This is a testnet configuration issue. Curve config is changeable via `setCurveConfig()` (onlyOwner). Need to either increase the slope or lower the graduation threshold for realistic testing.
-- **Status:** [ ] Needs config adjustment — call `setCurveConfig()` to set a non-zero slope or lower graduation threshold
+- **Issue:** Original linear curve with slope=0 meant constant price — graduation was mathematically impossible.
+- **Assessment:** Fixed — upgraded BondingCurveMath to virtual constant-product AMM (Pump.fun-style). Price now increases exponentially. Graduation threshold set to 420 AVAX (~87 AVAX total invested).
+- **Status:** [x] Fixed — UUPS upgrade deployed, new curve config set on-chain
 
 ### Privacy
 

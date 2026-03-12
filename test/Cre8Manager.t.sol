@@ -106,7 +106,7 @@ contract Cre8ManagerTest is Test {
 
         // Mark as graduated (simulate)
         // Can't directly, so test via the revert
-        // With slope=0, graduation would need 69K AVAX market cap
+        // Graduation happens at ~420 AVAX market cap with constant-product curve
     }
 
     // ============ Sell ============
@@ -198,9 +198,6 @@ contract Cre8ManagerTest is Test {
     // ============ Rounding Exploit Test ============
 
     function test_noRoundingExploit() public {
-        // Enable slope to test rounding with non-zero slope
-        vm.prank(owner);
-        manager.setCurveConfig(1e12, 1e6, 800_000_000e18, 69_000 ether);
 
         vm.prank(alice);
         (uint256 tokenId, address tokenAddr) = manager.createToken{value: 0.02 ether}("Test", "TST", 0);
@@ -297,11 +294,12 @@ contract Cre8ManagerTest is Test {
         assertEq(manager.owner(), owner, "Owner should not change");
     }
 
-    // ============ Overflow Safety with Slope ============
+    // ============ Constant-Product Curve Behavior ============
 
-    function test_largeSupplyWithSlope() public {
+    function test_customCurveConfig() public {
+        // Set a tighter curve: 10 AVAX virtual, 500M virtual tokens
         vm.prank(owner);
-        manager.setCurveConfig(1e12, 1e8, 800_000_000e18, 69_000 ether);
+        manager.setCurveConfig(10 ether, 500_000_000e18, 400_000_000e18, 200 ether);
 
         vm.prank(alice);
         (uint256 tokenId, address tokenAddr) = manager.createToken{value: 0.02 ether}("Test", "TST", 0);
@@ -313,6 +311,24 @@ contract Cre8ManagerTest is Test {
 
         vm.prank(bob);
         manager.sell(tokenId, tokens, 0, DEADLINE);
+    }
+
+    function test_exponentialPriceIncrease() public {
+        vm.prank(alice);
+        (uint256 tokenId, address tokenAddr) = manager.createToken{value: 0.02 ether}("Test", "TST", 0);
+
+        // Get starting price
+        uint256 priceBefore = manager.getCurrentPrice(tokenId);
+
+        // Buy a significant chunk
+        vm.prank(bob);
+        manager.buy{value: 20 ether}(tokenId, 0, DEADLINE);
+
+        uint256 priceAfter = manager.getCurrentPrice(tokenId);
+        assertTrue(priceAfter > priceBefore, "Price should increase after buy");
+        console.log("Price before:", priceBefore);
+        console.log("Price after:", priceAfter);
+        console.log("Price multiplier:", priceAfter / priceBefore);
     }
 
     // ============ Forge Mode: Whitelist ============

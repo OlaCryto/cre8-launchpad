@@ -95,7 +95,7 @@ This is a chain with massive and growing activity but **no native token launchpa
 | **Chain** | Avalanche C-Chain | Solana | Tron |
 | **Launch cost** | ~$1 (0.02 AVAX) | ~$0.02 | ~$0.01 |
 | **Launch time** | < 60 seconds | < 30 seconds | < 30 seconds |
-| **Bonding curve** | Linear (configurable) | Exponential | Exponential |
+| **Bonding curve** | Virtual constant-product (Pump.fun-style) | Exponential | Exponential |
 | **DEX graduation** | TraderJoe (auto) | Raydium (auto) | SunSwap (auto) |
 | **Anti-bot protection** | Cooldown, max tx/wallet, blacklist | Limited | Limited |
 | **Structured launches** | Forge Mode (whitelist, verification) | No | No |

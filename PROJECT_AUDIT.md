@@ -14,7 +14,7 @@
 ### Core Value Proposition
 - **Instant token creation** — Deploy an ERC20 with bonding curve in one transaction for 0.02 AVAX
 - **Fair launch by default** — No pre-mines, no team allocations (Easy Mode), bonding curve ensures transparent pricing
-- **Auto-graduation** — When market cap hits 69,000 AVAX, token automatically migrates to TraderJoe DEX with 1-year locked LP
+- **Auto-graduation** — When market cap hits 420 AVAX, token automatically migrates to TraderJoe DEX with 1-year locked LP
 - **Anti-rug protection** — LP permanently locked, anti-bot measures, creator fee transparency
 - **Forge Mode** — Advanced launches with presales, whitelist phases, team vesting, and hard/soft caps for verified creators
 
@@ -41,7 +41,7 @@ User
  └→ LaunchpadRouterV2 (entry point for buy/sell/create)
       ├→ LaunchpadFactoryV2 (deploys token + curve via EIP-1167 clones)
       │    ├→ LaunchpadTokenV2 (ERC20, trading phase enforcement)
-      │    └→ BondingCurveV2 (linear pricing, buy/sell execution)
+      │    └→ BondingCurveV2 (constant-product pricing, buy/sell execution)
       ├→ FeeManager (1% trades: 0.8% platform + 0.2% creator)
       ├→ CreatorRegistry (profile gating, verification tiers)
       ├→ ActivityTracker (live feed events, whale alerts, circular buffer)
@@ -62,7 +62,7 @@ Forge Mode (optional):
 | Bonding Curve | 800,000,000 (80%) |
 | DEX Liquidity Reserve | 200,000,000 (20%) |
 | Base Price | 1e12 wei (~1M tokens per AVAX) |
-| Graduation Threshold | 69,000 AVAX market cap |
+| Graduation Threshold | 420 AVAX market cap |
 | LP Lock Duration | 365 days |
 | Creator Initial Buy | 0-20% of curve supply |
 
@@ -113,7 +113,7 @@ launchpad/
 ├── contracts/
 │   ├── core/
 │   │   ├── LaunchpadTokenV2.sol      (601 lines) — ERC20 with trading phases
-│   │   ├── BondingCurveV2.sol        (518 lines) — Linear bonding curve
+│   │   ├── BondingCurveV2.sol        (518 lines) — Virtual constant-product bonding curve
 │   │   ├── LaunchpadFactoryV2.sol    (823 lines) — Clone factory
 │   │   ├── FeeManager.sol            (334 lines) — Fee collection/distribution
 │   │   ├── CreatorRegistry.sol       (434 lines) — Creator profiles
@@ -350,7 +350,7 @@ AuthContext.tsx   → Authentication + wallet management
 
 ### Core Platform ✅
 - [x] One-click token creation (Easy Mode) — 0.02 AVAX
-- [x] Linear bonding curve with deterministic pricing
+- [x] Virtual constant-product bonding curve with deterministic pricing
 - [x] Buy/sell with slippage protection and deadline
 - [x] Real-time price charts and trade history
 - [x] Automatic graduation to TraderJoe at 69k AVAX market cap

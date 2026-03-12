@@ -50,8 +50,9 @@ contract DeployCre8ManagerScript is Script {
         console.log("Owner:", manager.owner());
         console.log("Fee destination:", manager.protocolFeeDestination());
 
-        (uint256 basePrice, uint256 slope, uint256 maxSupply, uint256 gradThreshold) = manager.curveConfig();
-        console.log("Base price:", basePrice);
+        (uint256 virtualAvax, uint256 virtualTokens, uint256 maxSupply, uint256 gradThreshold) = manager.curveConfig();
+        console.log("Virtual AVAX:", virtualAvax);
+        console.log("Virtual Tokens:", virtualTokens);
         console.log("Graduation threshold:", gradThreshold);
 
         vm.stopBroadcast();
