@@ -3,7 +3,7 @@ import { avalancheFuji } from 'viem/chains';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Server } from 'http';
 
-const RPC_URL = process.env.FUJI_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+const RPC_URL = process.env.FUJI_RPC_URL || 'https://hardworking-dawn-sailboat.avalanche-testnet.quiknode.pro/022a54c6e74f3463167816f37d1f2ad5ae91af21/ext/bc/C/rpc/';
 const MANAGER_ADDRESS = (process.env.CRE8_MANAGER_ADDRESS || '0x4e972F92461AE6bc080411723C856996Dbe1591E') as Address;
 
 const BuyEvent = {
